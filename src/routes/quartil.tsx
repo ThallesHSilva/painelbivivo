@@ -234,7 +234,7 @@ function Section({
 }
 
 function QuartilPage() {
-  const { effectiveSelected, selected, role, allowedPartnerIds } = usePartnerFilter();
+  const { selected, role } = usePartnerFilter();
   const { data: partnerList = [] } = usePartners();
   const [metric, setMetric] = useState<QuartilMetric>("receita");
   const [rankingMode, setRankingMode] = useState<RankingMode>("score");
@@ -244,15 +244,15 @@ function QuartilPage() {
   const [quartileFilter, setQuartileFilter] = useState<QuartileFilter>(null);
   const [tenureFilter, setTenureFilter] = useState<TenureFilter>("all");
   const { data, isPending, error, refetch } = useQuery<QuartilSnapshot>({
-    queryKey: ["quartil", effectiveSelected],
+    queryKey: ["quartil", selected],
     queryFn: async () => {
       const params = new URLSearchParams();
-      effectiveSelected.forEach((id) => params.append("partner", id));
+      selected.forEach((id) => params.append("partner", id));
       const response = await fetch(`/api/quartil?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Não foi possível carregar os quartis.");
       return response.json();
     },
-    enabled: role === "director" || role === "gn",
+    enabled: role === "client",
   });
   const consultants = useMemo(() => data?.consultants ?? [], [data]);
   const tenureScopedConsultants = useMemo(
@@ -264,21 +264,17 @@ function QuartilPage() {
   );
   /**
    * Recorte em texto, sem alterar o filtro: nenhuma seleção continua significando
-   * consolidado, e o GN sem seleção continua vendo apenas os parceiros vinculados.
+   * consolidado.
    */
   const selectedNames = useMemo(
     () => selected.map((id) => partnerList.find((partner) => partner.id === id)?.name ?? id),
     [partnerList, selected],
   );
-  const allowedCount = allowedPartnerIds?.length ?? 0;
-  const hasNoAuthorizedPartners = role === "gn" && allowedCount === 0;
   const scopeLabel = selected.length
     ? selected.length === 1
       ? selectedNames[0]
       : `${selected.length} parceiros selecionados`
-    : role === "gn"
-      ? `${allowedCount} ${allowedCount === 1 ? "parceiro autorizado" : "parceiros autorizados"}`
-      : "Todos os parceiros (consolidado)";
+    : "Todos os parceiros (consolidado)";
   const distribution = useMemo(() => distributionFor(consultants, metric), [consultants, metric]);
   /** Parceiros que ainda não enviaram a competência mais recente e aparecem com o último mês deles. */
   const delayedPartners = useMemo(
@@ -424,11 +420,6 @@ function QuartilPage() {
         </div>
       ) : error ? (
         <ErrorState onRetry={() => refetch()} />
-      ) : hasNoAuthorizedPartners ? (
-        <EmptyState
-          title="Nenhum parceiro autorizado"
-          description="Seu perfil de GN ainda não possui vínculo com um parceiro. Procure o Diretor para liberar o recorte antes de consultar os quartis."
-        />
       ) : !data?.latestMonth ? (
         <EmptyState
           title="Aguardando a base de consultores"

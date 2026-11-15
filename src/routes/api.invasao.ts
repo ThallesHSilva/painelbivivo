@@ -31,12 +31,8 @@ export const Route = createFileRoute("/api/invasao")({
           ]),
         );
         const requested = new URL(request.url).searchParams.getAll("partner");
-        const authorized = snapshot.partners.filter(
-          (partner) =>
-            user.role === "director" || user.partnerIds.includes(canonical.get(partner.id)!.id),
-        );
         const ids = new Set(
-          authorized
+          snapshot.partners
             .filter(
               (partner) => !requested.length || requested.includes(canonical.get(partner.id)!.id),
             )
@@ -57,7 +53,7 @@ export const Route = createFileRoute("/api/invasao")({
             months,
             partners: [
               ...new Map(
-                authorized.map((partner) => {
+                snapshot.partners.map((partner) => {
                   const current = canonical.get(partner.id)!;
                   return [current.id, { id: current.id, name: current.name }];
                 }),

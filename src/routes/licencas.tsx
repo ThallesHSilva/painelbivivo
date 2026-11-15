@@ -23,7 +23,7 @@ export const Route = createFileRoute("/licencas")({
 
 function Page() {
   const { data, isLoading, error, refetch } = useLicenses();
-  const { selected, role, allowedPartnerIds } = usePartnerFilter();
+  const { selected } = usePartnerFilter();
   const { data: partners = [] } = usePartners();
   /**
    * A conversão é individual por parceiro; os cenários financeiros usam a taxa efetiva
@@ -46,14 +46,11 @@ function Page() {
     () => selected.map((id) => partners.find((partner) => partner.id === id)?.name ?? id),
     [partners, selected],
   );
-  const allowedCount = allowedPartnerIds?.length ?? 0;
   const scopeLabel = selected.length
     ? selected.length === 1
       ? selectedNames[0]
       : `${selected.length} parceiros selecionados`
-    : role === "gn"
-      ? `${allowedCount} ${allowedCount === 1 ? "parceiro autorizado" : "parceiros autorizados"}`
-      : "Todos os parceiros (consolidado)";
+    : "Todos os parceiros (consolidado)";
 
   /**
    * Cenários financeiros: mesma adoção potencial e mesmos tickets de antes. Sem base

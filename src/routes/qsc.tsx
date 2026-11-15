@@ -801,7 +801,7 @@ function PulseStrip({ metrics, competence }: { metrics: QscMetricSeries[]; compe
 }
 
 function QscPage() {
-  const { selected, role, allowedPartnerIds } = usePartnerFilter();
+  const { selected } = usePartnerFilter();
   const { data: partners = [] } = usePartners();
   const { data, isLoading, isFetching, error, refetch } = useQsc();
 
@@ -813,21 +813,17 @@ function QscPage() {
 
   /**
    * Recorte em texto, sem alterar o filtro: nenhuma seleção continua significando
-   * consolidado, e o GN sem seleção continua vendo apenas os parceiros vinculados.
+   * consolidado.
    */
   const selectedNames = useMemo(
     () => selected.map((id) => partners.find((partner) => partner.id === id)?.name ?? id),
     [partners, selected],
   );
-  const allowedCount = allowedPartnerIds?.length ?? 0;
-  const hasNoAuthorizedPartners = role === "gn" && allowedCount === 0;
   const scopeLabel = selected.length
     ? selected.length === 1
       ? selectedNames[0]
       : `${selected.length} parceiros selecionados`
-    : role === "gn"
-      ? `${allowedCount} ${allowedCount === 1 ? "parceiro autorizado" : "parceiros autorizados"}`
-      : "Todos os parceiros (consolidado)";
+    : "Todos os parceiros (consolidado)";
 
   const metricsByDomain = (domain: QscDomain) =>
     metrics.filter((metric) => metric.domain === domain);
@@ -890,11 +886,6 @@ function QscPage() {
             <SectionSkeleton key={domain} title={DOMAIN_META[domain].label} lines={6} />
           ))}
         </div>
-      ) : hasNoAuthorizedPartners ? (
-        <EmptyState
-          title="Nenhum parceiro autorizado"
-          description="Seu perfil de GN ainda não possui vínculo com um parceiro. Procure o Diretor para liberar o recorte antes de consultar o QSC."
-        />
       ) : !hasCurrentCompetence ? (
         <EmptyState
           title={`Sem base QSC para ${formatCompetence(currentCompetence)}`}

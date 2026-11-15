@@ -11,7 +11,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
 export function PartnerFilter() {
-  const { data: mapaPartners = [] } = usePartners();
+  const { data: mapaPartners } = usePartners();
   const isQuartil = useRouterState({ select: (state) => state.location.pathname === "/quartil" });
   const { data: quartilPartners } = useQuery({
     queryKey: ["quartil-partners"],
@@ -22,40 +22,27 @@ export function PartnerFilter() {
       return (await response.json()).partners;
     },
   });
-  const partners = isQuartil ? (quartilPartners ?? mapaPartners) : mapaPartners;
-  const { selected, toggle, clear, setSelected, allowedPartnerIds, role } = usePartnerFilter();
+  const partners = isQuartil ? quartilPartners : mapaPartners;
+  const { selected, toggle, clear, setSelected } = usePartnerFilter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
 
-  const availablePartners = useMemo(
-    () =>
-      role === "gn" && allowedPartnerIds
-        ? partners.filter((partner) => allowedPartnerIds.includes(partner.id))
-        : partners,
-    [partners, role, allowedPartnerIds],
-  );
   useEffect(() => {
-    if (!selected.length || role === null) return;
-    const availableIds = new Set(availablePartners.map((partner) => partner.id));
+    if (!selected.length || !partners) return;
+    const availableIds = new Set(partners.map((partner) => partner.id));
     const validSelection = selected.filter((id) => availableIds.has(id));
     if (validSelection.length !== selected.length) setSelected(validSelection);
-  }, [availablePartners, role, selected, setSelected]);
+  }, [partners, selected, setSelected]);
   const filtered = useMemo(
-    () => availablePartners.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())),
-    [availablePartners, q],
+    () => partners?.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())) ?? [],
+    [partners, q],
   );
 
   const hasSelection = selected.length > 0;
-  const hasNoPartnerAccess =
-    role === "gn" && allowedPartnerIds !== null && allowedPartnerIds.length === 0;
   const label = !hasSelection
-    ? role === "gn"
-      ? hasNoPartnerAccess
-        ? "Nenhum parceiro autorizado"
-        : "Parceiros vinculados"
-      : "Todos os parceiros"
+    ? "Todos os parceiros"
     : selected.length === 1
-      ? (availablePartners.find((p) => p.id === selected[0])?.name ?? "1 parceiro")
+      ? (partners?.find((p) => p.id === selected[0])?.name ?? "1 parceiro")
       : `${selected.length} parceiros`;
   const handleClear = () => {
     clear();
@@ -98,9 +85,9 @@ export function PartnerFilter() {
         </div>
         <div className="flex items-center justify-between border-b px-3 py-2 text-xs">
           <button
-            onClick={() => setSelected(availablePartners.map((p) => p.id))}
+            onClick={() => setSelected(partners?.map((p) => p.id) ?? [])}
             className="text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={hasNoPartnerAccess}
+            disabled={!partners?.length}
           >
             Selecionar todos
           </button>
@@ -137,9 +124,7 @@ export function PartnerFilter() {
             })}
             {filtered.length === 0 && (
               <li className="px-3 py-6 text-center text-xs text-muted-foreground">
-                {hasNoPartnerAccess
-                  ? "Nenhum parceiro autorizado. Procure o Diretor para solicitar um vínculo."
-                  : "Nenhum parceiro encontrado"}
+                Nenhum parceiro encontrado
               </li>
             )}
           </ul>
@@ -147,11 +132,7 @@ export function PartnerFilter() {
         <div className="border-t p-2 text-[11px] text-muted-foreground">
           {hasSelection
             ? `${selected.length} selecionado(s)`
-            : hasNoPartnerAccess
-              ? "Nenhum parceiro autorizado · procure o Diretor"
-              : role === "gn"
-                ? "Nenhum parceiro selecionado · visão dos parceiros atribuídos"
-                : "Nenhum parceiro selecionado · visão consolidada"}
+            : "Nenhum parceiro selecionado · visão consolidada"}
         </div>
       </PopoverContent>
     </Popover>

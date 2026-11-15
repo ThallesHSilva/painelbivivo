@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 export type UserStatus = "pending" | "approved" | "rejected";
-export type UserRole = "gn" | "director";
+const SQLITE_CONSTRAINT_UNIQUE = 2067;
 
 export type DataSnapshotKind =
   | "quartil"
@@ -49,8 +49,6 @@ export type StoredUser = {
   partnerName: string;
   passwordHash: string;
   status: UserStatus;
-  role: UserRole;
-  partnerIds: string[];
   createdAt: string;
   reviewedAt: string | null;
   lastLoginAt: string | null;
@@ -63,7 +61,6 @@ type UserRow = {
   partner_name: string;
   password_hash: string;
   status: UserStatus;
-  role: UserRole;
   created_at: string;
   reviewed_at: string | null;
   last_login_at: string | null;
@@ -84,9 +81,9 @@ function getDatabase() {
   if (database) return database;
   const path = databasePath();
   mkdirSync(dirname(path), { recursive: true });
-  database = new DatabaseSync(path);
-  database.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
-  database.exec(`
+  const db = new DatabaseSync(path, { timeout: 5_000 });
+  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+  db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -94,18 +91,12 @@ function getDatabase() {
       partner_name TEXT NOT NULL,
       password_hash TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-      role TEXT NOT NULL DEFAULT 'gn',
+      role TEXT NOT NULL DEFAULT 'client',
       created_at TEXT NOT NULL,
       reviewed_at TEXT,
       last_login_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_users_status_created_at ON users(status, created_at);
-    CREATE TABLE IF NOT EXISTS user_partner_access (
-      user_id INTEGER NOT NULL,
-      partner_id TEXT NOT NULL,
-      PRIMARY KEY (user_id, partner_id),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
     CREATE TABLE IF NOT EXISTS data_snapshots (
       kind TEXT PRIMARY KEY,
       payload TEXT NOT NULL,
@@ -135,19 +126,28 @@ function getDatabase() {
       updated_by TEXT
     );
   `);
-  const columns = database.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === "role")) {
-    database.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'gn'");
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const columns = db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "role")) {
+      db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'gn'");
+    }
+    // Previously restricted accounts need approval before accessing the consolidated panel.
+    db.exec(`
+      UPDATE users
+      SET status = CASE WHEN status = 'approved' AND role IS NOT 'director' THEN 'pending' ELSE status END,
+          reviewed_at = CASE WHEN status = 'approved' AND role IS NOT 'director' THEN NULL ELSE reviewed_at END,
+          role = 'client'
+      WHERE role IS NOT 'client'
+    `);
+    db.exec("COMMIT");
+  } catch (error) {
+    if (db.isTransaction) db.exec("ROLLBACK");
+    db.close();
+    throw error;
   }
+  database = db;
   return database;
-}
-
-function partnerIdsForUser(id: number) {
-  return (
-    getDatabase()
-      .prepare("SELECT partner_id FROM user_partner_access WHERE user_id = ? ORDER BY partner_id")
-      .all(id) as Array<{ partner_id: string }>
-  ).map((row) => row.partner_id);
 }
 
 function mapUser(row: UserRow): StoredUser {
@@ -158,8 +158,6 @@ function mapUser(row: UserRow): StoredUser {
     partnerName: row.partner_name,
     passwordHash: row.password_hash,
     status: row.status,
-    role: row.role === "director" ? "director" : "gn",
-    partnerIds: partnerIdsForUser(row.id),
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at,
     lastLoginAt: row.last_login_at,
@@ -181,11 +179,12 @@ export function createPendingUser(input: {
   const createdAt = new Date().toISOString();
   const result = getDatabase()
     .prepare(
-      `INSERT INTO users (name, email, partner_name, password_hash, status, created_at)
-       VALUES (?, ?, ?, ?, 'pending', ?)`,
+      `INSERT INTO users (name, email, partner_name, password_hash, status, role, created_at)
+       VALUES (?, ?, ?, ?, 'pending', 'client', ?)
+       ON CONFLICT(email) DO NOTHING`,
     )
     .run(input.name, input.email, input.partnerName, input.passwordHash, createdAt);
-  return Number(result.lastInsertRowid);
+  return result.changes > 0 ? Number(result.lastInsertRowid) : null;
 }
 
 export function listUsers(): StoredUser[] {
@@ -205,33 +204,25 @@ export function updateUserStatus(id: number, status: UserStatus) {
   return result.changes > 0;
 }
 
-export function updateUserRole(id: number, role: UserRole) {
-  const result = getDatabase().prepare("UPDATE users SET role = ? WHERE id = ?").run(role, id);
-  if (role === "director") {
-    getDatabase().prepare("DELETE FROM user_partner_access WHERE user_id = ?").run(id);
-  }
-  return result.changes > 0;
-}
-
-export function setUserPartnerAccess(userId: number, partnerIds: string[]) {
-  const db = getDatabase();
-  const target = db.prepare("SELECT role FROM users WHERE id = ?").get(userId) as
-    { role: UserRole } | undefined;
-  if (!target || target.role !== "gn") return false;
-
-  db.exec("BEGIN IMMEDIATE");
+export function updateUserDetails(
+  id: number,
+  details: { name: string; email: string; partnerName: string },
+) {
   try {
-    db.prepare("DELETE FROM user_partner_access WHERE user_id = ?").run(userId);
-    const insert = db.prepare(
-      "INSERT INTO user_partner_access (user_id, partner_id) VALUES (?, ?)",
-    );
-    for (const partnerId of [...new Set(partnerIds)]) insert.run(userId, partnerId);
-    db.exec("COMMIT");
-    return true;
+    const result = getDatabase()
+      .prepare("UPDATE users SET name = ?, email = ?, partner_name = ? WHERE id = ?")
+      .run(details.name, details.email, details.partnerName, id);
+    return result.changes > 0 ? "updated" : "not-found";
   } catch (error) {
-    db.exec("ROLLBACK");
+    if (error instanceof Error && "errcode" in error && error.errcode === SQLITE_CONSTRAINT_UNIQUE) {
+      return "exists";
+    }
     throw error;
   }
+}
+
+export function deleteUser(id: number) {
+  return getDatabase().prepare("DELETE FROM users WHERE id = ?").run(id).changes > 0;
 }
 
 export function registerUserLogin(id: number) {
@@ -368,19 +359,13 @@ export function listDataSnapshots(): DataSnapshotInfo[] {
   }));
 }
 
-export function listDataImports(limit = 10, uploadedBy?: string): DataImportInfo[] {
+export function listDataImports(limit = 10): DataImportInfo[] {
   const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
   const selection = `SELECT id, kind, source_name, uploaded_by, status, size_bytes, message, created_at
     FROM data_imports`;
-  const rows = (
-    uploadedBy
-      ? getDatabase()
-          .prepare(`${selection} WHERE uploaded_by = ? ORDER BY created_at DESC, id DESC LIMIT ?`)
-          .all(uploadedBy, safeLimit)
-      : getDatabase()
-          .prepare(`${selection} ORDER BY created_at DESC, id DESC LIMIT ?`)
-          .all(safeLimit)
-  ) as Array<{
+  const rows = getDatabase()
+    .prepare(`${selection} ORDER BY created_at DESC, id DESC LIMIT ?`)
+    .all(safeLimit) as Array<{
     id: number;
     kind: string;
     source_name: string;

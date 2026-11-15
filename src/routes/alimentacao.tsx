@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -15,19 +15,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { usePartnerFilter } from "@/contexts/AppContexts";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { readXlsxRows } from "@/lib/xlsx-reader";
 
 type FileKind =
   | "Quartil"
   | "Mapa Parque"
-  | "Resultados YoY"
   | "QSC Carteira"
   | "QSC Fixa"
   | "QSC Móvel"
-  | "Portabilidade analítica"
-  | "Best Guess"
-  | "Torres de serviço"
   | "Invasão de carteira"
   | "Base não reconhecida";
 
@@ -43,7 +40,6 @@ type SelectedFile = {
   source: File;
 };
 
-type UploadRole = "gn" | "director";
 
 type UploadHistoryItem = {
   id: number;
@@ -81,46 +77,26 @@ const EXPECTED_BASES = [
   },
   {
     number: "02",
-    title: "Resultados YoY",
-    description: "Metas, realizado e comparativo anual",
-  },
-  {
-    number: "03",
-    title: "Best Guess",
-    description: "M0 MTD, projeção de fechamento e saldo por parceiro",
-  },
-  {
-    number: "04",
-    title: "Portabilidade analítica",
-    description: "Port-In, Port-Out, saldo, operadora e evolução mensal",
-  },
-  {
-    number: "05",
-    title: "Torres de serviço",
-    description: "Forecast, esteira, ativado e melhor estimativa por torre",
-  },
-  {
-    number: "06",
     title: "QSC Carteira",
     description: "Indicadores de qualidade da carteira",
   },
   {
-    number: "07",
+    number: "03",
     title: "QSC Fixa",
     description: "Indicadores de qualidade banda larga",
   },
   {
-    number: "08",
+    number: "04",
     title: "QSC Móvel",
     description: "Indicadores de qualidade móvel",
   },
   {
-    number: "09",
+    number: "05",
     title: "Quartil",
     description: "Consultores por parceiro, abas mensais e evolução de Receita, Móvel e FTTH",
   },
   {
-    number: "10",
+    number: "06",
     title: "Invasão de carteira",
     description: "Altas Móvel e FTTH de invasão por parceiro, mês e Diretoria Habilitador",
   },
@@ -187,12 +163,6 @@ function identifyByFileName(fileName: string): Exclude<FileKind, "Base não reco
   if (name.includes("QUARTIL")) return "Quartil";
   if (name.includes("INVASAO")) return "Invasão de carteira";
   if (name.includes("MAPAPARQUE")) return "Mapa Parque";
-  if (name.includes("RESULTADO") && name.includes("YOY")) return "Resultados YoY";
-  if (name.includes("BESTGUESS")) return "Best Guess";
-  if (name.includes("TORRE") || name.includes("ALTASMOVEL")) return "Torres de serviço";
-  if (name.includes("PORTABILIDADE") || name.startsWith("ANALITICO")) {
-    return "Portabilidade analítica";
-  }
   if (name.includes("QSC")) {
     if (name.includes("FIXA")) return "QSC Fixa";
     if (name.includes("MOVEL")) return "QSC Móvel";
@@ -283,9 +253,6 @@ async function identifySpreadsheet(file: File): Promise<FileKind> {
     matches(["CODCLIENTE", "TPPRODUTO", "SITUACAORECEITA", "RECMOVEL"])
   )
     return "Mapa Parque";
-  if (matches(["NOMEREDE", "META", "REAL"]) || matches(["PRODUTO", "META", "REAL"])) {
-    return "Resultados YoY";
-  }
   if (matches(["INDICADOR", "SUBINDICADOR", "TIPOMOVIMENTO", "QUANTIDADE"])) {
     if (normalizedName.includes("FIXA")) return "QSC Fixa";
     if (normalizedName.includes("MOVEL")) return "QSC Móvel";
@@ -294,14 +261,6 @@ async function identifySpreadsheet(file: File): Promise<FileKind> {
     if (identifiedQsc) return identifiedQsc;
     throw new Error("A coluna INDICADOR não informa se o QSC é Carteira, Fixa ou Móvel.");
   }
-  if (
-    matches(["GRUPOECONOMICO", "ANOMESAGENDAMENTO", "TIPOPORTABILIDADE", "PORTINFM", "PORTOUTFM"])
-  )
-    return "Portabilidade analítica";
-  if (matches(["PARCEIRO", "M0MTDPORTIN", "M0MTDPORTOUT", "BGFMPORTIN", "BGFMPORTOUT"]))
-    return "Best Guess";
-  if (matches(["NMREDE", "FORECAST", "ESTEIRA"]) && combinedHeaders.has("ALTASMOVEL"))
-    return "Torres de serviço";
   throw new Error("Cabeçalhos não correspondem a uma base conhecida.");
 }
 
@@ -419,24 +378,10 @@ function AlimentacaoPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<SelectedFile[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [role, setRole] = useState<UploadRole | null>(null);
-  const roleRef = useRef<UploadRole | null>(null);
+  const { role } = usePartnerFilter();
   const [batchImporting, setBatchImporting] = useState(false);
   const [uploadHistory, setUploadHistory] = useState<UploadHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
-  useEffect(() => {
-    void fetch("/api/auth/session", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((payload: { user?: { role?: UploadRole } }) => {
-        const nextRole = payload.user?.role ?? null;
-        roleRef.current = nextRole;
-        setRole(nextRole);
-      })
-      .catch(() => {
-        roleRef.current = null;
-        setRole(null);
-      });
-  }, []);
   const refreshUploadHistory = () => {
     setHistoryLoading(true);
     void fetchUploadHistory()
@@ -447,36 +392,15 @@ function AlimentacaoPage() {
   useEffect(() => {
     refreshUploadHistory();
   }, []);
-  const permittedTitles = useMemo(
-    () =>
-      new Set<FileKind>(
-        role === "gn"
-          ? ["QSC Carteira", "QSC Fixa", "QSC Móvel"]
-          : role === "director"
-            ? [
-                "Mapa Parque",
-                "Resultados YoY",
-                "Best Guess",
-                "Portabilidade analítica",
-                "Torres de serviço",
-                "Quartil",
-                "Invasão de carteira",
-                "QSC Carteira",
-                "QSC Fixa",
-                "QSC Móvel",
-              ]
-            : [],
-      ),
-    [role],
-  );
-  const permittedBases = EXPECTED_BASES.filter((base) => permittedTitles.has(base.title));
+  const permittedBases = role === "client" ? EXPECTED_BASES : [];
+  const permittedTitles = new Set<FileKind>(permittedBases.map((base) => base.title));
   const identifiedKinds = new Set(
     files.filter((file) => file.status === "ready").map((file) => file.kind),
   );
   const matchedBaseCount = permittedBases.filter((base) => identifiedKinds.has(base.title)).length;
 
   const addFiles = async (incoming: FileList | File[]) => {
-    if (!roleRef.current) {
+    if (role !== "client") {
       toast.error("Permissões ainda não estão disponíveis", {
         description: "Aguarde um instante e selecione os arquivos novamente.",
       });
@@ -629,12 +553,7 @@ function AlimentacaoPage() {
   };
 
   const isImportable = (file: SelectedFile) =>
-    file.status === "ready" &&
-    (role === "director"
-      ? file.kind !== "Base não reconhecida"
-      : role === "gn"
-        ? QSC_KINDS.includes(file.kind as (typeof QSC_KINDS)[number])
-        : false);
+    file.status === "ready" && file.kind !== "Identificando…" && permittedTitles.has(file.kind);
 
   const importReadyFiles = async () => {
     const queuedFiles = files.filter(isImportable);
@@ -645,7 +564,7 @@ function AlimentacaoPage() {
     for (const file of queuedFiles) {
       const imported = await importFile(
         file,
-        role === "gn" ? "Falha ao importar o QSC." : "Falha ao importar a base.",
+        "Falha ao importar a base.",
         false,
       );
       if (imported) completed += 1;
@@ -653,10 +572,7 @@ function AlimentacaoPage() {
     setBatchImporting(false);
     if (completed > 0) {
       toast.success("Upload concluído com sucesso", {
-        description:
-          role === "gn"
-            ? `${completed} ${completed === 1 ? "arquivo foi recebido" : "arquivos foram recebidos"}. O QSC está sendo atualizado no servidor.`
-            : `${completed} ${completed === 1 ? "arquivo foi importado" : "arquivos foram importados"} e já atualizam o painel.`,
+        description: `${completed} ${completed === 1 ? "arquivo foi importado" : "arquivos foram importados"} e já atualizam o painel.`,
       });
     }
   };
@@ -823,14 +739,7 @@ function AlimentacaoPage() {
                             size="sm"
                             disabled={batchImporting}
                             className="shrink-0 rounded-xl px-3 text-xs"
-                            onClick={() =>
-                              void importFile(
-                                file,
-                                role === "gn"
-                                  ? "Falha ao importar o QSC."
-                                  : "Falha ao importar a base.",
-                              )
-                            }
+                            onClick={() => void importFile(file, "Falha ao importar a base.")}
                           >
                             Importar
                           </Button>

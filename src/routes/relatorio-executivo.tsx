@@ -6,7 +6,7 @@ import {
 } from "@/components/ExecutiveReportSupplements";
 import { qscSemesterValues } from "@/lib/qsc-domain-history";
 import type { InvasaoSnapshot } from "@/lib/invasao";
-import { layoutTowerPages, reportChunks } from "@/lib/report-data";
+import { reportChunks } from "@/lib/report-data";
 import { ExecutiveReportDocument, useReportPagination } from "@/components/ExecutiveReportDocument";
 import {
   ReportPage,
@@ -16,11 +16,10 @@ import {
   LargeSummary,
   CompactTable,
 } from "@/components/ExecutiveReportPrimitives";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, type ReactElement } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  BarChart3,
   Gauge,
   MapPin,
   Minus,
@@ -29,37 +28,19 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { usePartnerFilter } from "@/contexts/AppContexts";
 import { useAdvanced, useFtth, useLicenses, useMobile, usePartners, useQsc } from "@/hooks/useData";
-import { fmtBRL, fmtBRLCompact, fmtDec, fmtInt, fmtPct, fmtQscPct } from "@/lib/format";
+import { fmtBRL, fmtBRLCompact, fmtInt, fmtPct, fmtQscPct } from "@/lib/format";
 import {
   FTTH_SIMULATOR_STORAGE_KEY,
   MOBILE_SIMULATOR_STORAGE_KEY,
   readSavedConversionParams,
   simulateConversion,
 } from "@/lib/opportunity-simulation";
-import { buildYtdSummary, type YtdSummary } from "@/lib/report-ytd";
 import { quartilEvolutionCounts } from "@/lib/quartil";
 import type { QscDomain } from "@/lib/qsc";
 import { formatQscDeltaPp, qscVariation, qscWorsened, shortCompetence } from "@/lib/qsc-variation";
-import type {
-  BestGuessRecord,
-  BestGuessTotal,
-  PortabilidadeSnapshot,
-  ResultadosYoySnapshot,
-  ServiceTower,
-} from "@/lib/snapshot-types";
 import type { QuartilConsultant, QuartilMetric, QuartilSnapshot } from "@/lib/quartil";
-
-type SourceRecord = ResultadosYoySnapshot["records"][number];
-type AnalyticalRecord = PortabilidadeSnapshot["records"][number];
-type RuntimeResults = {
-  resultados: { source: ResultadosYoySnapshot["source"]; records: SourceRecord[] };
-  bestGuess: { records: BestGuessRecord[]; total: BestGuessTotal };
-  portabilidade: { records: AnalyticalRecord[] };
-  torres: { towers: ServiceTower[] };
-};
 
 const QUARTIL_REPORT_METRICS: Array<{ id: QuartilMetric; label: string }> = [
   { id: "receita", label: "Receita" },
@@ -67,26 +48,6 @@ const QUARTIL_REPORT_METRICS: Array<{ id: QuartilMetric; label: string }> = [
   { id: "ftth", label: "FTTH" },
 ];
 const QUARTIL_REPORT_COLORS = ["#15803d", "#65a30d", "#eab308", "#f97316", "#dc2626"] as const;
-
-const EMPTY_BEST_GUESS: BestGuessTotal = {
-  m0MtdPortIn: 0,
-  m0MtdPortOut: 0,
-  m0MtdSaldo: 0,
-  bgFmPortIn: 0,
-  bgFmPortOut: 0,
-  bgFmSaldo: 0,
-};
-
-const TOWER_PRODUCT_MAP: Record<string, string> = {
-  "altas-movel": "Móvel Líquido",
-  aparelhos: "Aparelhos",
-  "banda-larga": "Banda Larga",
-  "dados-avancados": "Dados Avançados",
-  vvn: "VVN",
-  voz: "Voz Avançada",
-  "ti-recorrente": "TI Recorrente",
-  "vivo-tech": "Vivo Tech",
-};
 
 const PULSE_METRICS = [
   { id: "early-churn-fixa", label: "Early Churn Fixa" },
@@ -103,34 +64,9 @@ const DOMAIN_LABELS: Array<{ domain: QscDomain; label: string }> = [
 ];
 
 export const Route = createFileRoute("/relatorio-executivo")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    tower: typeof search.tower === "string" ? search.tower : undefined,
-  }),
   head: () => ({ meta: [{ title: "Relatório executivo — Mapa Parque" }] }),
   component: ExecutiveReportPage,
 });
-
-function normalize(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toLowerCase();
-}
-
-function sumBestGuess(records: BestGuessRecord[]): BestGuessTotal {
-  return records.reduce<BestGuessTotal>(
-    (total, record) => ({
-      m0MtdPortIn: total.m0MtdPortIn + record.m0MtdPortIn,
-      m0MtdPortOut: total.m0MtdPortOut + record.m0MtdPortOut,
-      m0MtdSaldo: total.m0MtdSaldo + record.m0MtdSaldo,
-      bgFmPortIn: total.bgFmPortIn + record.bgFmPortIn,
-      bgFmPortOut: total.bgFmPortOut + record.bgFmPortOut,
-      bgFmSaldo: total.bgFmSaldo + record.bgFmSaldo,
-    }),
-    { ...EMPTY_BEST_GUESS },
-  );
-}
 
 type QuartilPartnerDistribution = {
   partner: string;
@@ -196,20 +132,8 @@ function qscRating(total: number | null) {
   return { band: "Sem faixa", points: 0 };
 }
 
-/**
- * A consolidação YTD/YoY vive em `@/lib/report-ytd`, com testes de caracterização
- * para snapshots legados incompletos (a origem dos `NaN` observados no relatório).
- */
-function towerYtdSummary(
-  tower: ServiceTower,
-  records: SourceRecord[],
-  monthsElapsed: number,
-): YtdSummary {
-  return buildYtdSummary(TOWER_PRODUCT_MAP[tower.id] ?? tower.title, records, monthsElapsed);
-}
-
 function ExecutiveReportPage() {
-  const { effectiveSelected, role } = usePartnerFilter();
+  const { selected, role } = usePartnerFilter();
   const { data: partners = [], isPending: partnersLoading } = usePartners();
   const { data: mobile, isLoading: mobileLoading } = useMobile();
   const { data: ftth, isLoading: ftthLoading } = useFtth();
@@ -217,20 +141,10 @@ function ExecutiveReportPage() {
   const licensesQuery = useLicenses();
   const advancedQuery = useAdvanced();
   const scopeQuery = new URLSearchParams();
-  effectiveSelected.forEach((partner) => scopeQuery.append("partner", partner));
-  const ready = role === "director" || role === "gn";
-  const resultsQuery = useQuery({
-    queryKey: ["report-results", role],
-    enabled: ready,
-    retry: false,
-    queryFn: async ({ signal }) => {
-      const response = await fetch("/api/data/resultados", { cache: "no-store", signal });
-      if (!response.ok) throw new Error("Não foi possível carregar os dados do relatório.");
-      return response.json() as Promise<RuntimeResults>;
-    },
-  });
+  selected.forEach((partner) => scopeQuery.append("partner", partner));
+  const ready = role === "client";
   const quartilQuery = useQuery({
-    queryKey: ["report-quartil", effectiveSelected],
+    queryKey: ["report-quartil", selected],
     enabled: ready,
     retry: false,
     queryFn: async ({ signal }) => {
@@ -240,7 +154,7 @@ function ExecutiveReportPage() {
     },
   });
   const invasaoQuery = useQuery({
-    queryKey: ["invasao", effectiveSelected],
+    queryKey: ["invasao", selected],
     enabled: ready,
     retry: false,
     queryFn: async ({ signal }) => {
@@ -251,9 +165,7 @@ function ExecutiveReportPage() {
   });
   const invasaoTickets = useInvasaoTickets(!!invasaoQuery.data?.months.length);
   const activePartner =
-    effectiveSelected.length === 1
-      ? partners.find((partner) => partner.id === effectiveSelected[0])
-      : undefined;
+    selected.length === 1 ? partners.find((partner) => partner.id === selected[0]) : undefined;
   const certificationQuery = useQuery({
     queryKey: ["certification-preview", activePartner?.id],
     enabled: ready && !!activePartner,
@@ -269,80 +181,17 @@ function ExecutiveReportPage() {
       }>;
     },
   });
-  const results = resultsQuery.data;
   const quartil = quartilQuery.data ?? null;
-  const loadError = resultsQuery.error?.message;
 
   const selectedNames = useMemo(
-    () => effectiveSelected.map((id) => partners.find((partner) => partner.id === id)?.name ?? id),
-    [effectiveSelected, partners],
+    () => selected.map((id) => partners.find((partner) => partner.id === id)?.name ?? id),
+    [selected, partners],
   );
-  const selectedCompanies = useMemo(() => new Set(selectedNames.map(normalize)), [selectedNames]);
-  const partnerLabel = effectiveSelected.includes("__no_partner_access__")
-    ? "Sem parceiros autorizados"
-    : selectedNames.length
-      ? selectedNames.length === 1
-        ? selectedNames[0]
-        : `${selectedNames.length} parceiros selecionados`
-      : "Todos os parceiros";
-
-  const towers = results?.torres.towers ?? [];
-
-  const scopedSourceRecords = useMemo(() => {
-    const records = results?.resultados.records ?? [];
-    return selectedCompanies.size
-      ? records.filter((record) => selectedCompanies.has(normalize(record.company)))
-      : records;
-  }, [results, selectedCompanies]);
-
-  const bestGuessRecords = useMemo(() => {
-    const records = results?.bestGuess.records ?? [];
-    return selectedCompanies.size
-      ? records.filter((record) => selectedCompanies.has(normalize(record.company)))
-      : records;
-  }, [results, selectedCompanies]);
-  const bestGuessTotal = useMemo(
-    () =>
-      selectedCompanies.size
-        ? sumBestGuess(bestGuessRecords)
-        : (results?.bestGuess.total ?? EMPTY_BEST_GUESS),
-    [bestGuessRecords, results, selectedCompanies.size],
-  );
-
-  const portabilityMonths = useMemo(() => {
-    const records = results?.portabilidade.records ?? [];
-    const scoped = selectedCompanies.size
-      ? records.filter((record) => selectedCompanies.has(normalize(record.company)))
-      : records;
-    const grouped = new Map<number, { portIn: number; portOut: number }>();
-    for (const record of scoped) {
-      const current = grouped.get(record.month) ?? { portIn: 0, portOut: 0 };
-      current.portIn += record.portIn;
-      current.portOut += record.portOut;
-      grouped.set(record.month, current);
-    }
-    return [...grouped.entries()]
-      .sort(([left], [right]) => left - right)
-      .slice(-6)
-      .map(([month, values]) => ({
-        month,
-        ...values,
-        saldo: values.portIn - values.portOut,
-        conversion: values.portIn ? (values.portIn - values.portOut) / values.portIn : null,
-      }));
-  }, [results, selectedCompanies]);
-
-  const portabilityTotal = portabilityMonths.reduce(
-    (total, month) => ({
-      portIn: total.portIn + month.portIn,
-      portOut: total.portOut + month.portOut,
-      saldo: total.saldo + month.saldo,
-    }),
-    { portIn: 0, portOut: 0, saldo: 0 },
-  );
-  const portabilityConversion = portabilityTotal.portIn
-    ? portabilityTotal.saldo / portabilityTotal.portIn
-    : null;
+  const partnerLabel = selectedNames.length
+    ? selectedNames.length === 1
+      ? selectedNames[0]
+      : `${selectedNames.length} parceiros selecionados`
+    : "Todos os parceiros";
 
   const mobileConversionParams = useMemo(
     () => readSavedConversionParams(MOBILE_SIMULATOR_STORAGE_KEY),
@@ -394,7 +243,6 @@ function ExecutiveReportPage() {
   const isLoading =
     !ready ||
     partnersLoading ||
-    !results ||
     mobileLoading ||
     ftthLoading ||
     qscLoading ||
@@ -405,20 +253,6 @@ function ExecutiveReportPage() {
     !invasaoTickets.isReady ||
     (!!activePartner && certificationQuery.isPending);
   const meta = { partner: partnerLabel, date: reportDate };
-
-  if (loadError) {
-    return (
-      <main className="grid min-h-screen place-items-center bg-slate-100 p-6">
-        <div className="max-w-lg rounded-3xl border border-rose-200 bg-white p-8 text-center shadow-xl">
-          <h1 className="text-xl font-semibold text-slate-950">Relatório indisponível</h1>
-          <p className="mt-2 text-sm text-slate-600">{loadError}</p>
-          <Button asChild className="mt-6 rounded-xl">
-            <Link to="/resultados">Voltar aos resultados</Link>
-          </Button>
-        </div>
-      </main>
-    );
-  }
 
   if (isLoading) {
     return (
@@ -433,41 +267,11 @@ function ExecutiveReportPage() {
 
   return (
     <ExecutiveReportDocument partner={partnerLabel}>
-      <CoverReportPage partner={partnerLabel} date={reportDate} towerCount={towers.length} />
-
-      <ChapterCoverPage
-        id="capitulo-producao"
-        number="01"
-        eyebrow="Resultado comercial"
-        title="Produção e torres de serviço"
-        description={`Visão integrada do desempenho YTD e YoY com o acompanhamento das ${towers.length} torres de serviço.`}
-        partner={partnerLabel}
-        date={reportDate}
-        tone="violet"
-      />
-
-      {towerAndPortabilityPages({
-        towers,
-        selectedCompanies,
-        records: scopedSourceRecords,
-        period: results.resultados.source.period,
-        monthsElapsed: results.resultados.source.monthsElapsed,
-        partner: partnerLabel,
-        date: reportDate,
-        portability: portabilityReportPages({
-          bestGuessRecords,
-          bestGuessTotal,
-          months: portabilityMonths,
-          total: portabilityTotal,
-          conversion: portabilityConversion,
-          partner: partnerLabel,
-          date: reportDate,
-        }),
-      })}
+      <CoverReportPage partner={partnerLabel} date={reportDate} />
 
       <ChapterCoverPage
         id="capitulo-certificacao"
-        number="02"
+        number="01"
         eyebrow="Certificação por PV"
         title="Certificação"
         description="Simulação salva do ciclo atual, sem consolidação entre parceiros."
@@ -484,7 +288,7 @@ function ExecutiveReportPage() {
 
       <ChapterCoverPage
         id="capitulo-oportunidades"
-        number="03"
+        number="02"
         eyebrow="Potencial comercial"
         title="Oportunidades"
         description="Invasão de Carteira, Móvel, FTTH, Licenças e Avançada no mesmo recorte de parceiros."
@@ -651,7 +455,7 @@ function ExecutiveReportPage() {
 
       <ChapterCoverPage
         id="capitulo-qsc"
-        number="04"
+        number="03"
         eyebrow="Qualidade e execução"
         title="QSC"
         description="Síntese histórica e indicadores críticos para acompanhar qualidade, execução e pontos de atenção."
@@ -664,7 +468,7 @@ function ExecutiveReportPage() {
 
       <ChapterCoverPage
         id="capitulo-quartil"
-        number="05"
+        number="04"
         eyebrow="Performance comercial"
         title="Quartil de consultores"
         description="Distribuição dos consultores por parceiro e por faixa de desempenho em Receita, Móvel e FTTH."
@@ -725,15 +529,7 @@ function CityBars({
   );
 }
 
-function CoverReportPage({
-  partner,
-  date,
-  towerCount,
-}: {
-  partner: string;
-  date: string;
-  towerCount: number;
-}) {
+function CoverReportPage({ partner, date }: { partner: string; date: string }) {
   const { page, totalPages } = useReportPagination();
   return (
     <article
@@ -760,13 +556,11 @@ function CoverReportPage({
           </h1>
           <p className="mt-6 text-2xl font-medium text-white/90">{partner}</p>
           <p className="mt-3 max-w-xl text-sm leading-6 text-violet-100">
-            Uma leitura objetiva de produção, acompanhamento comercial, oportunidades e qualidade
-            para apoiar a tomada de decisão.
+            Certificação, oportunidades, indicadores de qualidade e desempenho dos consultores.
           </p>
 
           <div className="mt-9 grid max-w-2xl grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-3">
             {[
-              ["Produção e torres", `${towerCount} torres de serviço`, "#capitulo-producao"],
               ["Certificação", "Simulação salva por PV", "#capitulo-certificacao"],
               ["Oportunidades", "Invasão, Móvel, FTTH, TI e Avançada", "#capitulo-oportunidades"],
               ["QSC", "Qualidade e execução", "#capitulo-qsc"],
@@ -864,310 +658,6 @@ function ChapterCoverPage({
   );
 }
 
-type TowerPageContext = {
-  selectedCompanies: Set<string>;
-  records: SourceRecord[];
-  period: string;
-  monthsElapsed: number;
-  partner: string;
-  date: string;
-};
-
-/** Uma torre: cartões, acompanhamento comercial e produção YoY. `dense` junta duas por folha. */
-function TowerSection({
-  tower,
-  dense,
-  records,
-  period,
-  monthsElapsed,
-  selectedCompanies,
-}: {
-  tower: ServiceTower;
-  dense: boolean;
-} & Omit<TowerPageContext, "partner" | "date">) {
-  const ytd = towerYtdSummary(tower, records, monthsElapsed);
-  const towerRows = selectedCompanies.size
-    ? tower.rows.filter((row) => selectedCompanies.has(normalize(row.partner)))
-    : tower.rows;
-  const gap = dense ? "mt-3" : "mt-5";
-
-  return (
-    <div>
-      {dense && <h2 className="mb-2 text-sm font-semibold text-slate-950">{tower.title}</h2>}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 print:grid-cols-4">
-        <MetricCard label="Real YTD" value={fmtDec(ytd.real)} accent="violet" />
-        <MetricCard label="Atingimento" value={fmtPct(ytd.attainment)} accent="violet" />
-        <MetricCard label="Gap da meta" value={signed(ytd.gap)} accent="violet" />
-        <MetricCard label="YoY" value={fmtPct(ytd.yoy)} accent="violet" />
-      </div>
-      <section className={gap}>
-        {!dense && (
-          <SectionTitle
-            icon={<BarChart3 className="size-4" />}
-            eyebrow="Acompanhamento comercial"
-            title={tower.title}
-          />
-        )}
-        <CompactTable
-          dense={dense}
-          headers={["Parceiro", ...tower.columns.map((column) => column.label)]}
-          rows={towerRows.map((row) => [
-            row.partner,
-            ...tower.columns.map((column) =>
-              formatTowerValue(row.values[column.key], column.format),
-            ),
-          ])}
-          empty="Sem dados para o parceiro nesta torre."
-        />
-      </section>
-      <section className={gap}>
-        {!dense && (
-          <SectionTitle icon={<Gauge className="size-4" />} eyebrow="Produção YoY" title={period} />
-        )}
-        <CompactTable
-          dense={dense}
-          headers={["Produto", "Meta", "Real", "%", "Gap TT", "Média/mês", "YoY R$", "YoY %"]}
-          rows={[
-            [
-              ytd.product,
-              fmtDec(ytd.meta),
-              fmtDec(ytd.real),
-              fmtPct(ytd.attainment),
-              signed(ytd.gap),
-              fmtDec(ytd.average),
-              signed(ytd.yoyGap),
-              fmtPct(ytd.yoy),
-            ],
-          ]}
-        />
-      </section>
-    </div>
-  );
-}
-
-function TowerReportPage({
-  towers,
-  partner,
-  date,
-  ...context
-}: { towers: ServiceTower[] } & TowerPageContext) {
-  const dense = towers.length > 1;
-  const products = towers.map(
-    (tower) => towerYtdSummary(tower, context.records, context.monthsElapsed).product,
-  );
-  return (
-    <ReportPage
-      title={products.join(" · ")}
-      eyebrow="Produção e torres de serviço"
-      partner={partner}
-      date={date}
-    >
-      <div className={dense ? "space-y-5" : ""}>
-        {towers.map((tower) => (
-          <TowerSection key={tower.id} tower={tower} dense={dense} {...context} />
-        ))}
-      </div>
-      {dense && <p className="mt-3 text-[10px] text-slate-500">Período: {context.period}.</p>}
-    </ReportPage>
-  );
-}
-
-/**
- * Linhas de parceiro de uma torre por folha. Com duas torres em cada folha, a tabela de
- * uma torre com mais parceiros continua em outra folha em vez de empurrar a vizinha.
- */
-const TOWER_ROWS_PER_SHEET = 4;
-
-/**
- * Torres de serviço, sempre duas por folha, e a portabilidade logo antes da torre
- * Banda Larga. A portabilidade interrompe o emparelhamento: nunca se junta a uma torre.
- */
-function towerAndPortabilityPages({
-  towers,
-  portability,
-  ...context
-}: {
-  towers: ServiceTower[];
-  portability: ReactElement[];
-} & TowerPageContext) {
-  type Unit = { key: string; tower: ServiceTower; compact: boolean; beforePortability: boolean };
-  const units: Unit[] = towers.flatMap((tower) =>
-    reportChunks(
-      context.selectedCompanies.size
-        ? tower.rows.filter((row) => context.selectedCompanies.has(normalize(row.partner)))
-        : tower.rows,
-      TOWER_ROWS_PER_SHEET,
-    ).map((rows, index) => ({
-      key: `${tower.id}-${index}`,
-      tower: { ...tower, rows },
-      compact: true,
-      beforePortability: tower.id === "banda-larga" && index === 0,
-    })),
-  );
-  return layoutTowerPages(units).flatMap((item) =>
-    item.kind === "portability"
-      ? portability
-      : [
-          <TowerReportPage
-            key={item.units.map((unit) => unit.key).join("+")}
-            towers={item.units.map((unit) => unit.tower)}
-            {...context}
-          />,
-        ],
-  );
-}
-
-/**
- * Portabilidade em uma única folha: M0 MTD × BG FM por parceiro e a evolução recente.
- * Com muitos parceiros a tabela M0 × BG não cabe ao lado da evolução e, só nesse caso,
- * continua em folhas próprias antes da folha de evolução.
- */
-const PORTABILITY_SINGLE_SHEET_MAX_ROWS = 5;
-
-function portabilityReportPages({
-  bestGuessRecords,
-  bestGuessTotal,
-  months,
-  total,
-  conversion,
-  partner,
-  date,
-}: {
-  bestGuessRecords: BestGuessRecord[];
-  bestGuessTotal: BestGuessTotal;
-  months: Array<{
-    month: number;
-    portIn: number;
-    portOut: number;
-    saldo: number;
-    conversion: number | null;
-  }>;
-  total: { portIn: number; portOut: number; saldo: number };
-  conversion: number | null;
-  partner: string;
-  date: string;
-}): ReactElement[] {
-  const single = bestGuessRecords.length <= PORTABILITY_SINGLE_SHEET_MAX_ROWS;
-  const bestGuessTable = (rows: BestGuessRecord[], withTotal: boolean) => (
-    <section className="rounded-[1.4rem] border border-sky-100 bg-white p-5 shadow-sm">
-      <SectionTitle
-        icon={<Smartphone className="size-4" />}
-        eyebrow="Portabilidade móvel"
-        title="M0 MTD × BG FM por parceiro"
-      />
-      <CompactTable
-        dense={single}
-        headers={[
-          "Parceiro",
-          "M0 Port-in",
-          "M0 Port-out",
-          "M0 Saldo",
-          "BG Port-in",
-          "BG Port-out",
-          "BG Saldo",
-        ]}
-        rows={rows.map((record) => [
-          record.company,
-          fmtDec(record.m0MtdPortIn),
-          signed(record.m0MtdPortOut),
-          signed(record.m0MtdSaldo),
-          fmtDec(record.bgFmPortIn),
-          signed(record.bgFmPortOut),
-          signed(record.bgFmSaldo),
-        ])}
-        total={
-          withTotal
-            ? [
-                "Total",
-                fmtDec(bestGuessTotal.m0MtdPortIn),
-                signed(bestGuessTotal.m0MtdPortOut),
-                signed(bestGuessTotal.m0MtdSaldo),
-                fmtDec(bestGuessTotal.bgFmPortIn),
-                signed(bestGuessTotal.bgFmPortOut),
-                signed(bestGuessTotal.bgFmSaldo),
-              ]
-            : undefined
-        }
-      />
-    </section>
-  );
-  const evolution = (
-    <section
-      className={`${single ? "mt-4" : ""} rounded-[1.4rem] border border-emerald-100 bg-white p-5 shadow-sm`}
-    >
-      <SectionTitle
-        icon={<Gauge className="size-4" />}
-        eyebrow="Resumo analítico"
-        title="Evolução de portabilidade"
-      />
-      <div className="mt-3 grid grid-cols-4 gap-3">
-        <MetricCard label="Port-in acumulado" value={fmtInt(total.portIn)} accent="violet" />
-        <MetricCard label="Port-out acumulado" value={fmtInt(total.portOut)} accent="violet" />
-        <MetricCard label="Saldo líquido" value={signed(total.saldo)} accent="emerald" />
-        <MetricCard label="Conversão" value={fmtPct(conversion)} accent="emerald" />
-      </div>
-      <CompactTable
-        dense
-        headers={["Mês", "Port-in", "Port-out", "Saldo líquido", "Conversão"]}
-        rows={months.map((month) => [
-          monthLabel(month.month),
-          fmtInt(month.portIn),
-          fmtInt(month.portOut),
-          signed(month.saldo),
-          fmtPct(month.conversion),
-        ])}
-        total={[
-          "Total acumulado",
-          fmtInt(total.portIn),
-          fmtInt(total.portOut),
-          signed(total.saldo),
-          fmtPct(conversion),
-        ]}
-      />
-    </section>
-  );
-  if (single)
-    return [
-      <ReportPage
-        key="portability"
-        title="Portabilidade móvel"
-        eyebrow="Produção e tendência"
-        partner={partner}
-        date={date}
-      >
-        {bestGuessTable(bestGuessRecords, true)}
-        {evolution}
-      </ReportPage>,
-    ];
-  const chunks = reportChunks(bestGuessRecords, 12);
-  return [
-    ...chunks.map((rows, index) => (
-      <ReportPage
-        key={`portability-${index}`}
-        title="Portabilidade móvel"
-        eyebrow="Produção e tendência"
-        partner={partner}
-        date={date}
-      >
-        {bestGuessTable(rows, index === chunks.length - 1)}
-      </ReportPage>
-    )),
-    <ReportPage
-      key="portability-evolution"
-      title="Evolução de portabilidade"
-      eyebrow="Produção e tendência"
-      partner={partner}
-      date={date}
-    >
-      {evolution}
-    </ReportPage>,
-  ];
-}
-
-/**
- * Páginas do capítulo QSC. Devolve uma lista (e não um componente) para que o relatório
- * conte cada folha de continuação na numeração e no total de páginas.
- */
 function qscReportPages({
   qsc,
   partner,
@@ -1678,15 +1168,4 @@ function QuartilOverviewReportPage({
       )}
     </ReportPage>
   );
-}
-
-function signed(value: number | null | undefined) {
-  if (value == null) return "—";
-  return `${value > 0 ? "+" : ""}${fmtDec(value)}`;
-}
-
-function formatTowerValue(value: string | number | null, format: string) {
-  if (value == null) return "—";
-  if (typeof value === "string") return value;
-  return format === "percent" ? fmtPct(value) : fmtDec(value);
 }

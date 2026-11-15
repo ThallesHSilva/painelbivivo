@@ -62,19 +62,19 @@ const shortMonth = (month: string) =>
     .replace(".", "")}/${month.slice(2, 4)}`;
 
 function Page() {
-  const { effectiveSelected, selected, role, allowedPartnerIds } = usePartnerFilter();
+  const { selected, role } = usePartnerFilter();
   const { data: partnerList = [] } = usePartners();
   const [chosenMonth, setChosenMonth] = useState<string | null>(null);
   const { data, isPending, error, refetch } = useQuery<InvasaoSnapshot>({
-    queryKey: ["invasao", effectiveSelected],
+    queryKey: ["invasao", selected],
     queryFn: async () => {
       const params = new URLSearchParams();
-      effectiveSelected.forEach((id) => params.append("partner", id));
+      selected.forEach((id) => params.append("partner", id));
       const response = await fetch(`/api/invasao?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Não foi possível carregar a invasão de carteira.");
       return response.json();
     },
-    enabled: role === "director" || role === "gn",
+    enabled: role === "client",
   });
 
   const months = useMemo(() => [...(data?.months ?? [])].reverse(), [data]);
@@ -98,15 +98,11 @@ function Page() {
     () => selected.map((id) => partnerList.find((partner) => partner.id === id)?.name ?? id),
     [partnerList, selected],
   );
-  const allowedCount = allowedPartnerIds?.length ?? 0;
-  const hasNoAuthorizedPartners = role === "gn" && allowedCount === 0;
   const scopeLabel = selected.length
     ? selected.length === 1
       ? selectedNames[0]
       : `${selected.length} parceiros selecionados`
-    : role === "gn"
-      ? `${allowedCount} ${allowedCount === 1 ? "parceiro autorizado" : "parceiros autorizados"}`
-      : "Todos os parceiros (consolidado)";
+    : "Todos os parceiros (consolidado)";
 
   return (
     <DashboardLayout title="Invasão de Carteira">
@@ -163,11 +159,6 @@ function Page() {
 
       {error ? (
         <ErrorState onRetry={() => refetch()} />
-      ) : hasNoAuthorizedPartners ? (
-        <EmptyState
-          title="Nenhum parceiro autorizado"
-          description="Seu perfil de GN ainda não possui vínculo com um parceiro. Procure o Diretor para liberar o recorte antes de consultar a invasão de carteira."
-        />
       ) : !isPending && !month ? (
         <EmptyState
           title="Aguardando a base de invasão de carteira"

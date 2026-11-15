@@ -1,9 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { isSameOriginRequest, register } from "@/lib/auth.server";
-
-function validPassword(value: string) {
-  return value.length >= 8 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value);
-}
+import { isSameOriginRequest, register, validUserPassword } from "@/lib/auth.server";
 
 export const Route = createFileRoute("/api/auth/register")({
   server: {
@@ -28,7 +24,7 @@ export const Route = createFileRoute("/api/auth/register")({
               { status: 400 },
             );
           }
-          if (!validPassword(password)) {
+          if (!validUserPassword(password)) {
             return Response.json(
               { message: "A senha precisa ter 8 caracteres, maiúscula, minúscula e número." },
               { status: 400 },

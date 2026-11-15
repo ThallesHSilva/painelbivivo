@@ -10,11 +10,10 @@ export const Route = createFileRoute("/certificacao")({
 });
 
 function CertificationPage() {
-  const { effectiveSelected, selected, role, allowedPartnerIds } = usePartnerFilter();
+  const { selected } = usePartnerFilter();
   const { data: partners = [] } = usePartners();
-  const candidatePartnerId = effectiveSelected.length === 1 ? effectiveSelected[0] : null;
+  const candidatePartnerId = selected.length === 1 ? selected[0] : null;
   const activePartner = partners.find((partner) => partner.id === candidatePartnerId) ?? null;
-  const allowedCount = allowedPartnerIds?.length ?? 0;
 
   /**
    * Cabeçalho funcional: nome da página e o recorte realmente em uso. A Certificação
@@ -24,9 +23,7 @@ function CertificationPage() {
     ? activePartner.name
     : selected.length > 1
       ? `${selected.length} parceiros selecionados`
-      : role === "gn" && selected.length === 0
-        ? `${allowedCount} ${allowedCount === 1 ? "parceiro autorizado" : "parceiros autorizados"}`
-        : "Nenhum parceiro selecionado";
+      : "Nenhum parceiro selecionado";
 
   return (
     <DashboardLayout title="Certificação">

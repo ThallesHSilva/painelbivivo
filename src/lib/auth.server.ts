@@ -1,23 +1,14 @@
 import { clearSession, getSession, updateSession } from "@tanstack/react-start/server";
-import {
-  createPendingUser,
-  findUserByEmail,
-  listUsers,
-  registerUserLogin,
-  setUserPartnerAccess,
-  updateUserRole,
-  updateUserStatus,
-  type UserRole,
-  type UserStatus,
-} from "@/lib/database.server";
+import { createPendingUser, findUserByEmail, listUsers, registerUserLogin } from "@/lib/database.server";
+
+export type AuthRole = "admin" | "client";
 
 export type AuthUser = {
   id: number | null;
   email: string;
   name: string;
-  role: "admin" | UserRole;
+  role: AuthRole;
   partnerName: string | null;
-  partnerIds: string[];
 };
 
 type AuthSessionData = {
@@ -222,11 +213,22 @@ export async function verifyPassword(password: string, storedHash: string) {
   return constantTimeEqual(await derivePassword(password, salt, iterations), expected);
 }
 
-async function adminCredentials() {
+function configuredAdminCredentials() {
   const environment = runtimeEnvironment();
   const email = environment?.AUTH_EMAIL?.trim().toLocaleLowerCase("pt-BR");
   const passwordHash = environment?.AUTH_PASSWORD_HASH;
-  if (email && passwordHash) return { email, passwordHash };
+  return email && passwordHash ? { email, passwordHash } : null;
+}
+
+export function isAdministratorEmail(email: string) {
+  const administratorEmail =
+    configuredAdminCredentials()?.email ?? (isProduction() ? undefined : DEVELOPMENT_EMAIL);
+  return email.trim().toLocaleLowerCase("pt-BR") === administratorEmail;
+}
+
+async function adminCredentials() {
+  const credentials = configuredAdminCredentials();
+  if (credentials) return credentials;
   if (isProduction()) throw new AuthConfigurationError();
   return { email: DEVELOPMENT_EMAIL, passwordHash: await hashPassword(DEVELOPMENT_PASSWORD) };
 }
@@ -252,7 +254,6 @@ export async function login(email: string, password: string): Promise<LoginResul
       name: "Administrador",
       role: "admin",
       partnerName: null,
-      partnerIds: [],
     };
     await writeSession(user);
     return { ok: true, user };
@@ -268,9 +269,8 @@ export async function login(email: string, password: string): Promise<LoginResul
     id: storedUser.id,
     email: storedUser.email,
     name: storedUser.name,
-    role: storedUser.role,
+    role: "client",
     partnerName: storedUser.partnerName,
-    partnerIds: storedUser.role === "gn" ? storedUser.partnerIds : [],
   };
   registerUserLogin(storedUser.id);
   await writeSession(user);
@@ -284,14 +284,22 @@ export async function register(input: {
   password: string;
 }) {
   const email = input.email.trim().toLocaleLowerCase("pt-BR");
-  if (findUserByEmail(email)) return { ok: false as const, reason: "exists" as const };
-  createPendingUser({
+  if (isAdministratorEmail(email) || findUserByEmail(email)) {
+    return { ok: false as const, reason: "exists" as const };
+  }
+  const id = createPendingUser({
     name: input.name.trim(),
     email,
     partnerName: input.partnerName.trim(),
     passwordHash: await hashPassword(input.password),
   });
-  return { ok: true as const };
+  return id === null
+    ? { ok: false as const, reason: "exists" as const }
+    : { ok: true as const, id };
+}
+
+export function validUserPassword(value: string) {
+  return value.length >= 8 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value);
 }
 
 export async function readAuthUser(): Promise<AuthUser | null> {
@@ -306,7 +314,10 @@ export async function readAuthUser(): Promise<AuthUser | null> {
   }
   const sessionUser = session.data.user;
   if (sessionUser.role === "admin") return sessionUser;
-  if (!sessionUser.id) return null;
+  if (sessionUser.role !== "client" || !sessionUser.id) {
+    await clearSession({ name: SESSION_NAME });
+    return null;
+  }
   const storedUser = findUserByEmail(sessionUser.email);
   if (!storedUser || storedUser.status !== "approved" || storedUser.id !== sessionUser.id) {
     await clearSession({ name: SESSION_NAME });
@@ -316,9 +327,8 @@ export async function readAuthUser(): Promise<AuthUser | null> {
     id: storedUser.id,
     email: storedUser.email,
     name: storedUser.name,
-    role: storedUser.role,
+    role: "client",
     partnerName: storedUser.partnerName,
-    partnerIds: storedUser.role === "gn" ? storedUser.partnerIds : [],
   };
 }
 
@@ -327,26 +337,8 @@ export async function requireAdmin() {
   return user?.role === "admin" ? user : null;
 }
 
-export async function requireDirector() {
-  const user = await readAuthUser();
-  return user?.role === "director" ? user : null;
-}
-
 export function usersForAdministration() {
   return listUsers().map(({ passwordHash: _passwordHash, ...user }) => user);
-}
-
-export function reviewUser(
-  id: number,
-  status: Extract<UserStatus, "approved" | "rejected">,
-  role?: UserRole,
-) {
-  if (role && !updateUserRole(id, role)) return false;
-  return updateUserStatus(id, status);
-}
-
-export function assignPartnersToGn(id: number, partnerIds: string[]) {
-  return setUserPartnerAccess(id, partnerIds);
 }
 
 export async function destroyAuthSession() {

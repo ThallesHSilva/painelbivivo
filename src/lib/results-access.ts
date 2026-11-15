@@ -4,14 +4,10 @@ import type {
   Partner,
   PortabilidadeSnapshot,
   ResultadosYoySnapshot,
-  ServiceTower,
   TorresServicoSnapshot,
 } from "./snapshot-types";
 
-type ResultsUser = {
-  role: "admin" | "director" | "gn";
-  partnerIds: string[];
-};
+import type { AuthRole } from "./auth.server";
 
 type ResultsSnapshots = {
   mapa: Pick<MapaSnapshot, "partners">;
@@ -81,42 +77,12 @@ function reconcileTowerPartnerNames(
   };
 }
 
-function scopedTowerTotal(tower: ServiceTower): ServiceTower["total"] {
-  if (tower.rows.length === 0) return {};
-
-  // Scoped totals use only finite numeric values from authorized rows.
-  // This avoids exposing the source's global TT
-  // row to a GN whose authorization covers only part of the dataset.
-  return Object.fromEntries(
-    tower.columns.map((column) => [
-      column.key,
-      tower.rows.reduce((sum, row) => {
-        const value = row.values[column.key];
-        return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
-      }, 0),
-    ]),
-  );
-}
-
-export function buildAuthorizedResultsPayload(user: ResultsUser, snapshots: ResultsSnapshots) {
-  if (user.role === "admin") {
+export function buildAuthorizedResultsPayload(role: AuthRole, snapshots: ResultsSnapshots) {
+  if (role === "admin") {
     throw new Error("Administradores não podem acessar dados de resultados.");
   }
 
-  const authorizedNames =
-    user.role === "gn"
-      ? new Set(
-          snapshots.mapa.partners
-            .filter((partner) => user.partnerIds.includes(partner.id))
-            .map((partner) => normalizeCompany(partner.name)),
-        )
-      : null;
-  const canSeeCompany = (company: string) =>
-    authorizedNames === null || authorizedNames.has(normalizeCompany(company));
-
-  const bestGuessRecords = snapshots.bestGuess.records.filter((record) =>
-    canSeeCompany(record.company),
-  );
+  const bestGuessRecords = snapshots.bestGuess.records;
   const bestGuessTotal = bestGuessRecords.reduce(
     (total, record) => ({
       m0MtdPortIn: total.m0MtdPortIn + record.m0MtdPortIn,
@@ -136,25 +102,10 @@ export function buildAuthorizedResultsPayload(user: ResultsUser, snapshots: Resu
     },
   );
 
-  const reconciledTowers = reconcileTowerPartnerNames(snapshots.torres, snapshots.mapa.partners);
-  const torres =
-    authorizedNames === null
-      ? reconciledTowers
-      : {
-          ...reconciledTowers,
-          towers: reconciledTowers.towers.map((tower) => {
-            const scopedTower = {
-              ...tower,
-              rows: tower.rows.filter((row) => canSeeCompany(row.partner)),
-            };
-            return { ...scopedTower, total: scopedTowerTotal(scopedTower) };
-          }),
-        };
-
   return {
     resultados: {
       source: snapshots.resultados.source,
-      records: snapshots.resultados.records.filter((record) => canSeeCompany(record.company)),
+      records: snapshots.resultados.records,
     },
     bestGuess: {
       source: snapshots.bestGuess.source,
@@ -163,8 +114,8 @@ export function buildAuthorizedResultsPayload(user: ResultsUser, snapshots: Resu
     },
     portabilidade: {
       source: snapshots.portabilidade.source,
-      records: snapshots.portabilidade.records.filter((record) => canSeeCompany(record.company)),
+      records: snapshots.portabilidade.records,
     },
-    torres,
+    torres: reconcileTowerPartnerNames(snapshots.torres, snapshots.mapa.partners),
   };
 }

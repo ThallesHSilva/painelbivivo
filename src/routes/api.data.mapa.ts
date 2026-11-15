@@ -12,11 +12,7 @@ export const Route = createFileRoute("/api/data/mapa")({
         }
 
         const snapshot = getDataSnapshot("mapa-parque");
-        const authorizedIds =
-          user.role === "gn"
-            ? new Set(user.partnerIds)
-            : new Set(snapshot.partners.map((partner) => partner.id));
-        const partners = snapshot.partners.filter((partner) => authorizedIds.has(partner.id));
+        const { partners } = snapshot;
         const scopes = Object.fromEntries(
           partners.flatMap((partner) => {
             const scope = snapshot.scopes[partner.id as keyof typeof snapshot.scopes];

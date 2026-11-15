@@ -30,14 +30,10 @@ const execFileAsync = promisify(execFile);
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
 const MAX_CHUNK_SIZE = 20 * 1024 * 1024;
 const QSC_KINDS = ["QSC Carteira", "QSC Fixa", "QSC Móvel"] as const;
-const DIRECTOR_KINDS = [
+const IMPORT_KINDS = [
   "Quartil",
   "Invasão de carteira",
   "Mapa Parque",
-  "Resultados YoY",
-  "Best Guess",
-  "Portabilidade analítica",
-  "Torres de serviço",
 ] as const;
 
 function uploadsPath() {
@@ -340,11 +336,11 @@ export const Route = createFileRoute("/api/data/upload")({
     handlers: {
       GET: async () => {
         const user = await readAuthUser();
-        if (!user) {
+        if (user?.role !== "client") {
           return Response.json({ message: "Acesso não autorizado." }, { status: 403 });
         }
         return Response.json(
-          { uploads: listDataImports(10, user.role === "gn" ? user.email : undefined) },
+          { uploads: listDataImports() },
           { headers: { "Cache-Control": "no-store" } },
         );
       },
@@ -352,16 +348,14 @@ export const Route = createFileRoute("/api/data/upload")({
         const user = await readAuthUser();
         const kind = request.headers.get("x-base-kind") ?? "";
         const isQsc = QSC_KINDS.includes(kind as (typeof QSC_KINDS)[number]);
-        const isDirectorBase = DIRECTOR_KINDS.includes(kind as (typeof DIRECTOR_KINDS)[number]);
-        const permitted =
-          (user?.role === "director" && (isDirectorBase || isQsc)) ||
-          (user?.role === "gn" && isQsc);
-        if (!permitted)
+        const isImportKind = IMPORT_KINDS.includes(kind as (typeof IMPORT_KINDS)[number]);
+        if (user?.role !== "client")
           return Response.json({ message: "Sem permissão para esta base." }, { status: 403 });
+        const { email: uploadedBy } = user;
         if (!isSameOriginRequest(request)) {
           return Response.json({ message: "Origem não permitida." }, { status: 403 });
         }
-        if (!isDirectorBase && !isQsc) {
+        if (!isImportKind && !isQsc) {
           return Response.json(
             { message: "Tipo de base ainda não suportado nesta rota." },
             { status: 400 },
@@ -482,7 +476,7 @@ export const Route = createFileRoute("/api/data/upload")({
               kind: "mapa-parque",
               snapshotPath,
               sourceName: originalName,
-              uploadedBy: user?.email,
+              uploadedBy,
               sizeBytes: declaredFileSize || contentLength,
             });
             return importedResponse({
@@ -506,7 +500,7 @@ export const Route = createFileRoute("/api/data/upload")({
               kind: "quartil",
               snapshotPath,
               sourceName: originalName,
-              uploadedBy: user?.email,
+              uploadedBy,
               sizeBytes: declaredFileSize || contentLength,
             });
             return importedResponse({
@@ -540,7 +534,7 @@ export const Route = createFileRoute("/api/data/upload")({
                 kind: "invasao-carteira",
                 snapshotPath,
                 sourceName: originalName,
-                uploadedBy: user?.email,
+                uploadedBy,
                 sizeBytes: declaredFileSize || contentLength,
               });
               return importedResponse({
@@ -552,85 +546,6 @@ export const Route = createFileRoute("/api/data/upload")({
               await rm(snapshotPath, { force: true });
               await rm(previousPath, { force: true });
             }
-          }
-
-          if (kind === "Best Guess") {
-            const processor = path.resolve("scripts", "process-best-guess.mjs");
-            const snapshotPath = path.join(snapshotDirectory, "best-guess.snapshot.json");
-            const { stdout } = await execFileAsync(
-              process.execPath,
-              [processor, uploadedPath, snapshotPath],
-              { maxBuffer: 10 * 1024 * 1024, timeout: 30 * 60 * 1000 },
-            );
-            await persistSnapshot({
-              kind: "best-guess",
-              snapshotPath,
-              sourceName: originalName,
-              uploadedBy: user?.email,
-              sizeBytes: declaredFileSize || contentLength,
-            });
-            return importedResponse({
-              imported: true,
-              processed: true,
-              result: JSON.parse(stdout),
-            });
-          }
-
-          if (kind === "Torres de serviço") {
-            const processor = path.resolve("scripts", "process-torres-servico.mjs");
-            const snapshotPath = path.join(snapshotDirectory, "torres-servico.snapshot.json");
-            const { stdout } = await execFileAsync(
-              process.execPath,
-              [processor, uploadedPath, snapshotPath],
-              {
-                maxBuffer: 10 * 1024 * 1024,
-                timeout: 30 * 60 * 1000,
-              },
-            );
-            await persistSnapshot({
-              kind: "torres-servico",
-              snapshotPath,
-              sourceName: originalName,
-              uploadedBy: user?.email,
-              sizeBytes: declaredFileSize || contentLength,
-            });
-            return importedResponse({
-              imported: true,
-              processed: true,
-              result: JSON.parse(stdout),
-            });
-          }
-
-          if (kind === "Resultados YoY" || kind === "Portabilidade analítica") {
-            const processor = path.resolve(
-              "scripts",
-              kind === "Resultados YoY"
-                ? "process-resultados-yoy.mjs"
-                : "process-portabilidade-analitica.mjs",
-            );
-            const snapshotPath = path.join(
-              snapshotDirectory,
-              kind === "Resultados YoY"
-                ? "resultados-yoy.snapshot.json"
-                : "analitico-portabilidade.snapshot.json",
-            );
-            const { stdout } = await execFileAsync(
-              process.execPath,
-              [processor, uploadedPath, snapshotPath],
-              { maxBuffer: 10 * 1024 * 1024, timeout: 30 * 60 * 1000 },
-            );
-            await persistSnapshot({
-              kind: kind === "Resultados YoY" ? "resultados-yoy" : "portabilidade-analitica",
-              snapshotPath,
-              sourceName: originalName,
-              uploadedBy: user?.email,
-              sizeBytes: declaredFileSize || contentLength,
-            });
-            return importedResponse({
-              imported: true,
-              processed: true,
-              result: JSON.parse(stdout),
-            });
           }
 
           {
@@ -669,14 +584,6 @@ export const Route = createFileRoute("/api/data/upload")({
               metadata.partnerName,
               snapshotDirectory,
             );
-            if (user?.role === "gn" && !user.partnerIds.includes(sourcePartner.id)) {
-              return Response.json(
-                {
-                  message: `O parceiro ${sourcePartner.name} nÃ£o estÃ¡ vinculado ao seu perfil de acesso.`,
-                },
-                { status: 403 },
-              );
-            }
             const storagePartnerId =
               partnerSlug(sourcePartner.id) ||
               partnerSlug(sourcePartner.name) ||
@@ -706,14 +613,14 @@ export const Route = createFileRoute("/api/data/upload")({
               kind: "qsc",
               snapshotPath,
               sourceName: originalName,
-              uploadedBy: user?.email,
+              uploadedBy,
               sizeBytes: declaredFileSize || contentLength,
               recordImport: false,
             });
             recordDataImportSuccess({
               kind,
               sourceName: originalName,
-              uploadedBy: user?.email,
+              uploadedBy,
               sizeBytes: declaredFileSize || contentLength,
               message: "Resumo QSC importado sem recÃ¡lculo de KPIs.",
             });
@@ -734,14 +641,6 @@ export const Route = createFileRoute("/api/data/upload")({
           const semester = qscSemesterSlot(originalName);
           const sourcePartnerName = await qscPartnerName(uploadedPath);
           const sourcePartner = await canonicalQscPartner(sourcePartnerName, snapshotDirectory);
-          if (user?.role === "gn" && !user.partnerIds.includes(sourcePartner.id)) {
-            return Response.json(
-              {
-                message: `O parceiro ${sourcePartner.name} não está vinculado ao seu perfil de acesso.`,
-              },
-              { status: 403 },
-            );
-          }
           const storagePartnerId =
             partnerSlug(sourcePartner.id) ||
             partnerSlug(sourcePartner.name) ||
@@ -768,7 +667,7 @@ export const Route = createFileRoute("/api/data/upload")({
           recordDataImportSuccess({
             kind,
             sourceName: originalName,
-            uploadedBy: user?.email,
+            uploadedBy,
             sizeBytes: declaredFileSize || contentLength,
             message: "Arquivo recebido; processamento QSC agendado.",
           });
@@ -778,7 +677,7 @@ export const Route = createFileRoute("/api/data/upload")({
             qscDirectory,
             snapshotDirectory,
             sourceName: originalName,
-            uploadedBy: user?.email,
+            uploadedBy,
             sizeBytes: declaredFileSize || contentLength,
           });
           return importedResponse({
@@ -793,7 +692,7 @@ export const Route = createFileRoute("/api/data/upload")({
           recordDataImportError({
             kind,
             sourceName: originalName,
-            uploadedBy: user?.email,
+            uploadedBy,
             sizeBytes: declaredFileSize || contentLength,
             message,
           });

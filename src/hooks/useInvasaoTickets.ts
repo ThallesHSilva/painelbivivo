@@ -50,7 +50,7 @@ export function useInvasaoTickets(active: boolean) {
   const client = useQueryClient();
   const identity = useQuery({
     queryKey: ["invasao-ticket-identity"],
-    enabled: active && (role === "director" || role === "gn"),
+    enabled: active && role === "client",
     retry: false,
     queryFn: async ({ signal }) => {
       const response = await fetch("/api/auth/session", { cache: "no-store", signal });

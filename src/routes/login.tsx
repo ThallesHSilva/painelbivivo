@@ -13,8 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-type Role = "admin" | "director" | "gn";
+import type { AuthRole } from "@/lib/auth.server";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -24,11 +23,11 @@ export const Route = createFileRoute("/login")({
 });
 
 function safeRedirect() {
-  if (typeof window === "undefined") return "/resultados";
+  if (typeof window === "undefined") return "/";
   const destination = new URLSearchParams(window.location.search).get("redirect");
   return destination?.startsWith("/") && !destination.startsWith("//") && destination !== "/login"
     ? destination
-    : "/resultados";
+    : "/";
 }
 
 function LoginPage() {
@@ -44,7 +43,7 @@ function LoginPage() {
   useEffect(() => {
     void fetch("/api/auth/session", { cache: "no-store" })
       .then((response) => response.json())
-      .then((session: { authenticated?: boolean; user?: { role?: Role } }) => {
+      .then((session: { authenticated?: boolean; user?: { role?: AuthRole } }) => {
         if (session.authenticated)
           window.location.replace(session.user?.role === "admin" ? "/usuarios" : safeRedirect());
       })
@@ -63,7 +62,7 @@ function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       });
-      const payload = (await response.json()) as { message?: string; user?: { role?: Role } };
+      const payload = (await response.json()) as { message?: string; user?: { role?: AuthRole } };
       if (!response.ok) {
         setMessage(payload.message ?? "Não foi possível entrar.");
         return;

@@ -3,15 +3,8 @@ import { isSameOriginRequest, readAuthUser } from "@/lib/auth.server";
 import { getCertificationPreview, saveCertificationPreview } from "@/lib/database.server";
 import { getDataSnapshot } from "@/lib/snapshots.server";
 
-function canAccessPartner(
-  partnerId: string,
-  user: NonNullable<Awaited<ReturnType<typeof readAuthUser>>>,
-) {
-  const partnerExists = getDataSnapshot("mapa-parque").partners.some(
-    (partner) => partner.id === partnerId,
-  );
-  if (!partnerExists) return false;
-  return user.role === "director" || (user.role === "gn" && user.partnerIds.includes(partnerId));
+function partnerExists(partnerId: string) {
+  return getDataSnapshot("mapa-parque").partners.some((partner) => partner.id === partnerId);
 }
 
 export const Route = createFileRoute("/api/certificacao/previa")({
@@ -20,7 +13,7 @@ export const Route = createFileRoute("/api/certificacao/previa")({
       GET: async ({ request }) => {
         const user = await readAuthUser();
         const partnerId = new URL(request.url).searchParams.get("partnerId")?.trim() ?? "";
-        if (!user || user.role === "admin" || !canAccessPartner(partnerId, user)) {
+        if (!user || user.role === "admin" || !partnerExists(partnerId)) {
           return Response.json({ message: "Acesso não autorizado." }, { status: 403 });
         }
         return Response.json(
@@ -38,7 +31,7 @@ export const Route = createFileRoute("/api/certificacao/previa")({
         }
         const body = (await request.json()) as { partnerId?: unknown; payload?: unknown };
         const partnerId = typeof body.partnerId === "string" ? body.partnerId.trim() : "";
-        if (!partnerId || body.payload === undefined || !canAccessPartner(partnerId, user)) {
+        if (!partnerId || body.payload === undefined || !partnerExists(partnerId)) {
           return Response.json({ message: "Solicitação inválida." }, { status: 400 });
         }
         const serialized = JSON.stringify(body.payload);

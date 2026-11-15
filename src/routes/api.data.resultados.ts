@@ -17,7 +17,7 @@ export const Route = createFileRoute("/api/data/resultados")({
         const bestGuess = getDataSnapshot("best-guess");
         const portabilidade = getDataSnapshot("portabilidade-analitica");
         return Response.json(
-          buildAuthorizedResultsPayload(user, {
+          buildAuthorizedResultsPayload(user.role, {
             mapa,
             resultados,
             bestGuess,

@@ -104,15 +104,14 @@ export function CertificationPanel() {
   const [transferAttempt, setTransferAttempt] = useState(0);
   const pendingRef = useRef<PendingWrite | null>(null);
 
-  const { effectiveSelected, role, allowedPartnerIds } = usePartnerFilter();
+  const { selected } = usePartnerFilter();
   const { data: partners = [] } = usePartners();
-  const candidatePartnerId = effectiveSelected.length === 1 ? effectiveSelected[0] : null;
+  const candidatePartnerId = selected.length === 1 ? selected[0] : null;
   const activePartner = useMemo(
     () => partners.find((partner) => partner.id === candidatePartnerId) ?? null,
     [candidatePartnerId, partners],
   );
   const activePartnerId = activePartner?.id ?? null;
-  const hasNoAuthorizedPartners = role === "gn" && (allowedPartnerIds?.length ?? 0) === 0;
 
   /*
     Carga da prévia do PV. Declarada antes do autosave para que a troca de parceiro
@@ -526,12 +525,8 @@ export function CertificationPanel() {
       <Card className="overflow-hidden">
         <div className="p-4 md:p-5">
           <EmptyState
-            title={hasNoAuthorizedPartners ? "Nenhum parceiro autorizado" : "Selecione um único PV"}
-            description={
-              hasNoAuthorizedPartners
-                ? "Seu perfil de GN ainda não possui vínculo com um parceiro. Procure o Diretor antes de consultar ou preencher a Certificação."
-                : "A Certificação é apurada por PV: o ciclo fechado e a simulação pertencem a um parceiro. Use o filtro de parceiros no menu superior e mantenha apenas um selecionado."
-            }
+            title="Selecione um único PV"
+            description="A Certificação é apurada por PV: o ciclo fechado e a simulação pertencem a um parceiro. Use o filtro de parceiros no menu superior e mantenha apenas um selecionado."
           />
         </div>
       </Card>

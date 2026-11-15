@@ -36,7 +36,7 @@ export function ExecutiveReportDocument({
     <main className="executive-report min-h-screen bg-slate-100 px-4 py-6 text-slate-950 sm:px-6">
       <div className="no-print sticky top-3 z-50 mx-auto mb-5 flex max-w-[1120px] items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-3">
         <Button asChild variant="outline">
-          <Link to="/resultados">
+          <Link to="/">
             <ArrowLeft className="size-4" />
             Voltar
           </Link>

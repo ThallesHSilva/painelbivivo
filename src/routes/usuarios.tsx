@@ -1,21 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Check,
   Clock3,
-  Database,
   LoaderCircle,
+  MoreHorizontal,
+  Pencil,
   Search,
-  Save,
   ShieldCheck,
+  Trash2,
   UserCheck,
+  UserPlus,
   UsersRound,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -27,34 +28,41 @@ import {
 import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { TableScroll } from "@/components/TableScroll";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 
-type Role = "admin" | "director" | "gn";
 type ManagedUser = {
   id: number;
   name: string;
   email: string;
   partnerName: string;
-  role: "director" | "gn";
-  partnerIds: string[];
   status: "pending" | "approved" | "rejected";
-  createdAt: string;
   lastLoginAt: string | null;
 };
-type BaseUpdate = { available: boolean; updatedAt: string | null };
-type Partner = {
-  id: string;
-  name: string;
-  updates: {
-    mapaParque: BaseUpdate;
-    qscCarteira: BaseUpdate;
-    qscFixa: BaseUpdate;
-    qscMovel: BaseUpdate;
-    resultadosYoy: BaseUpdate;
-    bestGuess: BaseUpdate;
-    portabilidade: BaseUpdate;
-  };
-};
-
 const statusInfo = {
   pending: { label: "Pendente", className: "border-amber-500/20 bg-amber-500/10 text-amber-700" },
   approved: {
@@ -63,6 +71,18 @@ const statusInfo = {
   },
   rejected: { label: "Cancelado", className: "border-rose-500/20 bg-rose-500/10 text-rose-700" },
 };
+
+async function mutateUsers(method: "POST" | "PUT" | "PATCH" | "DELETE", body: object) {
+  const response = await fetch("/api/admin/users", {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message ?? "Não foi possível concluir a alteração.");
+  }
+}
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -76,65 +96,31 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-function BaseUpdateStatus({ update }: { update: BaseUpdate }) {
-  if (!update.available) {
-    return <span className="text-[11px] font-medium text-muted-foreground">Sem base</span>;
-  }
-  if (!update.updatedAt) {
-    return (
-      <span className="inline-flex rounded-lg border border-amber-500/15 bg-amber-500/[0.07] px-2 py-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-        Data não registrada
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex rounded-lg border border-emerald-500/15 bg-emerald-500/[0.07] px-2 py-1 text-[10px] font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
-      {formatDate(update.updatedAt)}
-    </span>
-  );
-}
-
 export const Route = createFileRoute("/usuarios")({
   head: () => ({ meta: [{ title: "Acessos — Mapa Parque" }] }),
   component: UsersPage,
 });
 
 function UsersPage() {
-  const [role, setRole] = useState<Role | null>(null);
   const [users, setUsers] = useState<ManagedUser[]>([]);
-  const [partners, setPartners] = useState<Partner[]>([]);
-  const [draftRoles, setDraftRoles] = useState<Record<number, "director" | "gn">>({});
-  const [draftAccess, setDraftAccess] = useState<Record<number, string[]>>({});
   const [loading, setLoading] = useState(true);
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [pending, setPending] = useState<number | "new" | null>(null);
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
+  const [editor, setEditor] = useState<{ user?: ManagedUser } | null>(null);
+  const [deleting, setDeleting] = useState<ManagedUser | null>(null);
+  const [dialogError, setDialogError] = useState("");
+  const newUserButton = useRef<HTMLButtonElement>(null);
+  const dialogOpener = useRef<HTMLElement | null>(null);
 
-  const loadData = useCallback(async (knownRole?: Role) => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setMessage("");
     try {
-      let activeRole = knownRole;
-      if (!activeRole) {
-        const session = (await fetch("/api/auth/session", { cache: "no-store" }).then((response) =>
-          response.json(),
-        )) as { user?: { role?: Role } };
-        activeRole = session.user?.role;
-        setRole(activeRole ?? null);
-      }
-      const endpoint = activeRole === "admin" ? "/api/admin/users" : "/api/director/access";
-      const response = await fetch(endpoint, { cache: "no-store" });
-      const payload = (await response.json()) as {
-        users?: ManagedUser[];
-        partners?: Partner[];
-        message?: string;
-      };
+      const response = await fetch("/api/admin/users", { cache: "no-store" });
+      const payload = (await response.json()) as { users?: ManagedUser[]; message?: string };
       if (!response.ok) throw new Error(payload.message ?? "Não foi possível carregar os acessos.");
-      const loadedUsers = payload.users ?? [];
-      setUsers(loadedUsers);
-      setPartners(payload.partners ?? []);
-      setDraftRoles(Object.fromEntries(loadedUsers.map((user) => [user.id, user.role])));
-      setDraftAccess(Object.fromEntries(loadedUsers.map((user) => [user.id, user.partnerIds])));
+      setUsers(payload.users ?? []);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível carregar os acessos.");
     } finally {
@@ -167,97 +153,127 @@ function UsersPage() {
             : true,
         )
         .sort((left, right) => {
-          if (left.status !== right.status) return left.status === "pending" ? -1 : 1;
-          return left.name.localeCompare(right.name);
+          return (
+            Number(right.status === "pending") - Number(left.status === "pending") ||
+            left.name.localeCompare(right.name, "pt-BR")
+          );
         }),
     [normalizedSearch, users],
   );
-  const visiblePartners = useMemo(
-    () =>
-      partners.filter((partner) =>
-        normalizedSearch ? partner.name.toLocaleLowerCase().includes(normalizedSearch) : true,
-      ),
-    [normalizedSearch, partners],
-  );
 
   const review = async (user: ManagedUser, status: "approved" | "rejected") => {
-    setUpdatingId(user.id);
+    setPending(user.id);
     setMessage("");
     try {
-      const response = await fetch("/api/admin/users", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: user.id, status, role: draftRoles[user.id] ?? user.role }),
-      });
-      const payload = (await response.json()) as { message?: string };
-      if (!response.ok)
-        throw new Error(payload.message ?? "Não foi possível atualizar o cadastro.");
-      await loadData("admin");
+      await mutateUsers("PATCH", { id: user.id, status });
+      toast.success(
+        status === "approved"
+          ? "Cadastro aprovado."
+          : user.status === "approved"
+            ? "Acesso revogado."
+            : "Cadastro recusado.",
+      );
+      await loadData();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Não foi possível atualizar o cadastro.");
     } finally {
-      setUpdatingId(null);
+      setPending(null);
     }
   };
 
-  const saveAccess = async (userId: number) => {
-    setUpdatingId(userId);
-    setMessage("");
+  const prepareDialog = (user?: ManagedUser) => {
+    setDialogError("");
+    dialogOpener.current = user
+      ? document.getElementById(`user-actions-${user.id}`)
+      : newUserButton.current;
+  };
+
+  const restoreDialogFocus = (event: Event) => {
+    event.preventDefault();
+    const opener = dialogOpener.current;
+    (opener?.isConnected && !opener.matches(":disabled") ? opener : newUserButton.current)?.focus();
+  };
+
+  const saveUser = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editor || pending !== null) return;
+    const values = new FormData(event.currentTarget);
+    const details = {
+      name: values.get("name"),
+      email: values.get("email"),
+      partnerName: values.get("partnerName"),
+    };
+    const user = editor.user;
+    setPending(user?.id ?? "new");
+    setDialogError("");
     try {
-      const response = await fetch("/api/director/access", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, partnerIds: draftAccess[userId] ?? [] }),
-      });
-      const payload = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(payload.message ?? "Não foi possível salvar a carteira.");
-      await loadData("director");
+      if (user) {
+        await mutateUsers("PUT", { id: user.id, ...details });
+      } else {
+        await mutateUsers("POST", { ...details, password: values.get("password") });
+      }
+      setEditor(null);
+      toast.success(user ? "Cadastro atualizado." : "Usuário cadastrado. Aguardando aprovação.");
+      await loadData();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Não foi possível salvar a carteira.");
+      setDialogError(
+        error instanceof Error ? error.message : "Não foi possível salvar o cadastro.",
+      );
     } finally {
-      setUpdatingId(null);
+      setPending(null);
     }
   };
 
-  const togglePartner = (userId: number, partnerId: string) => {
-    setDraftAccess((current) => {
-      const selected = current[userId] ?? [];
-      return {
-        ...current,
-        [userId]: selected.includes(partnerId)
-          ? selected.filter((id) => id !== partnerId)
-          : [...selected, partnerId],
-      };
-    });
+  const removeUser = async () => {
+    if (!deleting || pending !== null) return;
+    setPending(deleting.id);
+    setDialogError("");
+    try {
+      await mutateUsers("DELETE", { id: deleting.id });
+      setDeleting(null);
+      toast.success("Cadastro excluído.");
+      await loadData();
+    } catch (error) {
+      setDialogError(
+        error instanceof Error ? error.message : "Não foi possível excluir o cadastro.",
+      );
+    } finally {
+      setPending(null);
+    }
   };
 
-  const admin = role === "admin";
   return (
     <DashboardLayout title="Acessos">
       <div className="space-y-6">
         <section className="border-b border-border pb-5">
-          <div className="hidden" />
           <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
             <div>
               <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                <ShieldCheck className="size-4" /> {admin ? "Administração" : "Gestão de carteira"}
+                <ShieldCheck className="size-4" /> Administração
               </span>
-              <h1 className="mt-4 text-3xl font-semibold tracking-tight">
-                {admin ? "Autorizações de usuários" : "Parceiros por GN"}
-              </h1>
+              <h1 className="mt-4 text-3xl font-semibold tracking-tight">Gerenciar usuários</h1>
               <p className="page-subtitle mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                {admin
-                  ? "Aprove cadastros, defina o perfil e cancele acessos quando necessário."
-                  : "Defina quais parceiros cada GN poderá consultar no painel."}
+                Aprove cadastros para liberar o acesso ao painel do cliente.
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => void loadData(role ?? undefined)}
-              className="shrink-0"
-            >
-              Atualizar lista
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={loading || pending !== null}
+                onClick={() => void loadData()}
+              >
+                Atualizar lista
+              </Button>
+              <Button
+                ref={newUserButton}
+                onClick={() => {
+                  prepareDialog();
+                  setEditor({});
+                }}
+              >
+                <UserPlus className="size-4" /> Novo usuário
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -269,38 +285,38 @@ function UsersPage() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={admin ? "Buscar usuário, e-mail ou empresa" : "Buscar GN ou parceiro"}
-            aria-label={admin ? "Buscar usuário, e-mail ou empresa" : "Buscar GN ou parceiro"}
+            placeholder="Buscar usuário, e-mail ou empresa"
+            aria-label="Buscar usuário, e-mail ou empresa"
             className="h-10 pl-9"
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
           {[
-            { label: admin ? "Cadastros" : "GNs", value: totals.total, icon: UsersRound },
+            { label: "Cadastros", value: totals.total, icon: UsersRound },
             {
-              label: admin ? "Aguardando" : "Parceiros disponíveis",
-              value: admin ? totals.pending : partners.length,
+              label: "Pendentes",
+              value: totals.pending,
               icon: Clock3,
             },
             {
-              label: admin ? "Ativos" : "GNs com acesso",
-              value: admin
-                ? totals.approved
-                : users.filter((user) => user.partnerIds.length).length,
+              label: "Ativos",
+              value: totals.approved,
               icon: UserCheck,
             },
           ].map((item) => (
             <Card
               key={item.label}
-              className="rounded-[1.6rem] border-primary/10 bg-card/85 p-5 shadow-sm"
+              className="rounded-xl border-primary/10 bg-card/85 p-3 shadow-sm sm:p-5"
             >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
-                  <p className="mt-1 text-3xl font-semibold tabular-nums">{item.value}</p>
+                  <p className="mt-1 text-2xl font-semibold tabular-nums sm:text-3xl">
+                    {item.value}
+                  </p>
                 </div>
-                <span className="grid size-11 place-items-center rounded-2xl bg-primary/[0.07] text-primary">
+                <span className="hidden size-10 place-items-center rounded-lg bg-primary/[0.07] text-primary sm:grid">
                   <item.icon className="size-5" />
                 </span>
               </div>
@@ -308,139 +324,11 @@ function UsersPage() {
           ))}
         </div>
 
-        {!admin && (
-          <Card className="overflow-hidden rounded-[2rem] border-primary/15 bg-card/90 shadow-elevated">
-            <div className="flex flex-col gap-3 border-b border-primary/10 bg-gradient-to-r from-primary/[0.055] to-cyan/[0.035] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
-              <div className="flex items-center gap-3">
-                <span className="grid size-10 place-items-center rounded-2xl bg-primary/[0.1] text-primary ring-4 ring-background/50">
-                  <Database className="size-5" />
-                </span>
-                <div>
-                  <h2 className="text-lg font-semibold tracking-tight">
-                    Bases e acessos por parceiro
-                  </h2>
-                  <p className="page-subtitle mt-0.5 text-xs text-muted-foreground">
-                    Visão consolidada das cargas disponíveis e dos GNs vinculados.
-                  </p>
-                </div>
-              </div>
-              <Badge
-                variant="outline"
-                className="w-fit rounded-xl border-primary/15 bg-background/70 px-3 py-1.5 text-primary"
-              >
-                {partners.length} parceiro(s)
-              </Badge>
-            </div>
-            <TableScroll
-              className="p-3 sm:p-5"
-              hint="Role na horizontal para consultar bases e GNs vinculados."
-            >
-              <div className="overflow-hidden rounded-2xl border border-primary/10 bg-background/70">
-                <Table className="min-w-[1480px]">
-                  <TableHeader className="bg-primary/[0.04] [&_th]:h-auto [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-primary/10 [&_th]:px-4 [&_th]:py-3.5 [&_th]:text-[10px] [&_th]:font-semibold [&_th]:uppercase [&_th]:tracking-[0.1em]">
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="sticky left-0 z-[1] w-[220px] bg-muted">
-                        Parceiro
-                      </TableHead>
-                      <TableHead className="w-[170px]">Mapa Parque</TableHead>
-                      <TableHead className="w-[230px]">QSC</TableHead>
-                      <TableHead className="w-[170px]">Resultados YoY</TableHead>
-                      <TableHead className="w-[170px]">Best Guess</TableHead>
-                      <TableHead className="w-[170px]">Portabilidade</TableHead>
-                      <TableHead className="min-w-[260px]">GNs vinculados</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody className="[&_td]:border-primary/[0.07] [&_td]:px-4 [&_td]:py-4 [&_tr]:transition-colors [&_tr:hover]:bg-primary/[0.025]">
-                    {visiblePartners.map((partner) => {
-                      const assignedUsers = users.filter((user) =>
-                        (draftAccess[user.id] ?? []).includes(partner.id),
-                      );
-                      return (
-                        <TableRow key={partner.id}>
-                          <TableCell className="sticky left-0 z-[1] bg-card">
-                            <div className="flex items-center gap-3">
-                              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/[0.08] text-xs font-bold text-primary">
-                                {partner.name.slice(0, 2).toUpperCase()}
-                              </span>
-                              <div className="min-w-0">
-                                <p className="truncate font-semibold text-foreground">
-                                  {partner.name}
-                                </p>
-                                <p className="truncate text-[10px] text-muted-foreground">
-                                  {partner.id}
-                                </p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <BaseUpdateStatus update={partner.updates.mapaParque} />
-                          </TableCell>
-                          <TableCell>
-                            <div className="grid gap-1.5">
-                              {[
-                                ["Carteira", partner.updates.qscCarteira],
-                                ["Fixa", partner.updates.qscFixa],
-                                ["Móvel", partner.updates.qscMovel],
-                              ].map(([label, update]) => (
-                                <div
-                                  key={label as string}
-                                  className="flex items-center justify-between gap-2"
-                                >
-                                  <span className="text-[10px] font-semibold text-muted-foreground">
-                                    {label as string}
-                                  </span>
-                                  <BaseUpdateStatus update={update as BaseUpdate} />
-                                </div>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <BaseUpdateStatus update={partner.updates.resultadosYoy} />
-                          </TableCell>
-                          <TableCell>
-                            <BaseUpdateStatus update={partner.updates.bestGuess} />
-                          </TableCell>
-                          <TableCell>
-                            <BaseUpdateStatus update={partner.updates.portabilidade} />
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1.5">
-                              {assignedUsers.length ? (
-                                assignedUsers.map((user) => (
-                                  <Badge
-                                    key={user.id}
-                                    variant="outline"
-                                    className="rounded-lg border-primary/15 bg-primary/[0.055] text-[10px] font-semibold text-primary"
-                                  >
-                                    {user.name}
-                                  </Badge>
-                                ))
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  Nenhum GN vinculado
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </TableScroll>
-          </Card>
-        )}
-
         <Card className="overflow-hidden rounded-[2rem] border-primary/15 bg-card/90 shadow-elevated">
           <div className="border-b border-primary/10 px-5 py-5 sm:px-7">
-            <h2 className="text-lg font-semibold tracking-tight">
-              {admin ? "Solicitações de acesso" : "Escopo de visualização"}
-            </h2>
+            <h2 className="text-lg font-semibold tracking-tight">Usuários cadastrados</h2>
             <p className="page-subtitle mt-1 text-xs text-muted-foreground">
-              {admin
-                ? "O cancelamento encerra o acesso imediatamente."
-                : "Um GN pode receber um ou vários parceiros."}
+              O cancelamento encerra o acesso imediatamente.
             </p>
           </div>
           {message && (
@@ -459,81 +347,114 @@ function UsersPage() {
             >
               <LoaderCircle className="size-6 animate-spin text-primary" />
             </div>
-          ) : users.length === 0 ? (
+          ) : visibleUsers.length === 0 ? (
             <div className="grid min-h-56 place-items-center text-sm text-muted-foreground">
-              Nenhum usuário disponível.
+              {search.trim() ? "Nenhum usuário encontrado." : "Nenhum usuário disponível."}
             </div>
-          ) : admin ? (
+          ) : (
             <TableScroll hint="Role na horizontal para ver as ações do usuário.">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Usuário</TableHead>
-                    <TableHead>Empresa informada</TableHead>
-                    <TableHead>Perfil</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Último acesso</TableHead>
+                    <TableHead className="hidden md:table-cell">Empresa informada</TableHead>
+                    <TableHead className="hidden sm:table-cell">Status</TableHead>
+                    <TableHead className="hidden md:table-cell">Último acesso</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {visibleUsers.map((user) => {
-                    const busy = updatingId === user.id;
+                    const canApprove = user.status !== "approved";
+                    const lastAccess = formatDate(user.lastLoginAt);
                     return (
                       <TableRow key={user.id}>
-                        <TableCell>
+                        <TableCell className="max-w-[14rem] whitespace-normal [overflow-wrap:anywhere]">
                           <p className="font-semibold">{user.name}</p>
                           <p className="text-xs text-muted-foreground">{user.email}</p>
-                        </TableCell>
-                        <TableCell>{user.partnerName || "A definir pelo diretor"}</TableCell>
-                        <TableCell>
-                          <select
-                            value={draftRoles[user.id] ?? user.role}
-                            onChange={(event) =>
-                              setDraftRoles((current) => ({
-                                ...current,
-                                [user.id]: event.target.value as "gn" | "director",
-                              }))
-                            }
-                            className="h-9 rounded-xl border border-input bg-background px-3 text-sm"
+                          {(user.partnerName || user.lastLoginAt) && (
+                            <div className="mt-1 space-y-0.5 text-xs text-muted-foreground md:hidden">
+                              {user.partnerName && <p>{user.partnerName}</p>}
+                              {user.lastLoginAt && <p>Último acesso em {lastAccess}</p>}
+                            </div>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className={`mt-1 sm:hidden ${statusInfo[user.status].className}`}
                           >
-                            <option value="gn">GN</option>
-                            <option value="director">Diretor</option>
-                          </select>
+                            {statusInfo[user.status].label}
+                          </Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden max-w-[14rem] whitespace-normal [overflow-wrap:anywhere] md:table-cell">
+                          {user.partnerName || "—"}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <Badge variant="outline" className={statusInfo[user.status].className}>
                             {statusInfo[user.status].label}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {formatDate(user.lastLoginAt)}
+                        <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
+                          {lastAccess}
                         </TableCell>
                         <TableCell>
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={busy || user.status === "rejected"}
-                              onClick={() => void review(user, "rejected")}
-                              className="rounded-xl text-rose-600"
-                            >
-                              <X className="size-4" />{" "}
-                              {user.status === "approved" ? "Revogar" : "Recusar"}
-                            </Button>
-                            <Button
-                              size="sm"
-                              disabled={busy}
-                              onClick={() => void review(user, "approved")}
-                              className="rounded-xl"
-                            >
-                              {busy ? (
-                                <LoaderCircle className="size-4 animate-spin" />
-                              ) : (
-                                <Check className="size-4" />
-                              )}{" "}
-                              {user.status === "approved" ? "Salvar perfil" : "Aprovar"}
-                            </Button>
+                          <div className="flex items-center justify-end gap-1 sm:gap-2">
+                            {canApprove && (
+                              <Button
+                                size="sm"
+                                disabled={pending !== null}
+                                onClick={() => void review(user, "approved")}
+                                className="rounded-xl"
+                              >
+                                {pending === user.id && !editor && !deleting ? (
+                                  <LoaderCircle className="size-4 animate-spin" />
+                                ) : (
+                                  <Check className="size-4" />
+                                )}{" "}
+                                Aprovar
+                              </Button>
+                            )}
+                            <DropdownMenu modal={false}>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  id={`user-actions-${user.id}`}
+                                  size="icon"
+                                  variant="outline"
+                                  aria-label={`Ações de ${user.name}`}
+                                  disabled={pending !== null}
+                                  className="size-9"
+                                >
+                                  <MoreHorizontal className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="min-w-40">
+                                <DropdownMenuItem
+                                  onSelect={() => {
+                                    prepareDialog(user);
+                                    setEditor({ user });
+                                  }}
+                                >
+                                  <Pencil /> Editar cadastro
+                                </DropdownMenuItem>
+                                {user.status !== "rejected" && (
+                                  <DropdownMenuItem onSelect={() => void review(user, "rejected")}>
+                                    <X />{" "}
+                                    {user.status === "approved"
+                                      ? "Revogar acesso"
+                                      : "Recusar cadastro"}
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onSelect={() => {
+                                    prepareDialog(user);
+                                    setDeleting(user);
+                                  }}
+                                >
+                                  <Trash2 /> Excluir cadastro
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -542,56 +463,132 @@ function UsersPage() {
                 </TableBody>
               </Table>
             </TableScroll>
-          ) : (
-            <div className="grid gap-4 p-5 sm:p-7">
-              {visibleUsers.map((user) => (
-                <div
-                  key={user.id}
-                  className="rounded-2xl border border-primary/10 bg-primary/[0.025] p-5"
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <p className="font-semibold">{user.name}</p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
-                    </div>
-                    <Badge variant="outline">
-                      {(draftAccess[user.id] ?? []).length} parceiro(s)
-                    </Badge>
-                  </div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {visiblePartners.map((partner) => (
-                      <label
-                        key={partner.id}
-                        className="flex cursor-pointer items-center gap-2 rounded-xl border border-primary/10 bg-background/70 px-3 py-2.5 text-sm"
-                      >
-                        <Checkbox
-                          checked={(draftAccess[user.id] ?? []).includes(partner.id)}
-                          onCheckedChange={() => togglePartner(user.id, partner.id)}
-                        />
-                        <span className="truncate">{partner.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="mt-4 flex justify-end">
-                    <Button
-                      onClick={() => void saveAccess(user.id)}
-                      disabled={updatingId === user.id}
-                      className="rounded-xl"
-                    >
-                      {updatingId === user.id ? (
-                        <LoaderCircle className="size-4 animate-spin" />
-                      ) : (
-                        <Save className="size-4" />
-                      )}{" "}
-                      Salvar carteira
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
         </Card>
       </div>
+      <Dialog
+        open={editor !== null}
+        onOpenChange={(open) => {
+          if (!open && pending === null) setEditor(null);
+        }}
+      >
+        <DialogContent
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-xl"
+          onCloseAutoFocus={restoreDialogFocus}
+        >
+          <DialogHeader className="text-left">
+            <DialogTitle>{editor?.user ? "Editar cadastro" : "Novo usuário"}</DialogTitle>
+            <DialogDescription>
+              {editor?.user
+                ? "Atualize os dados do cadastro."
+                : "O usuário poderá entrar após a aprovação do cadastro."}
+            </DialogDescription>
+          </DialogHeader>
+          {editor && (
+            <form onSubmit={saveUser} autoComplete="off" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="user-name">Nome</Label>
+                <Input
+                  id="user-name"
+                  name="name"
+                  defaultValue={editor.user?.name}
+                  minLength={3}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="user-email">E-mail</Label>
+                <Input
+                  id="user-email"
+                  name="email"
+                  type="email"
+                  defaultValue={editor.user?.email}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="user-company">Empresa (opcional)</Label>
+                <Input
+                  id="user-company"
+                  name="partnerName"
+                  defaultValue={editor.user?.partnerName}
+                />
+              </div>
+              {!editor.user && (
+                <div className="space-y-2">
+                  <Label htmlFor="user-password">Senha inicial</Label>
+                  <Input
+                    id="user-password"
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    aria-describedby="user-password-hint"
+                    required
+                  />
+                  <p id="user-password-hint" className="text-xs text-muted-foreground">
+                    Pelo menos 8 caracteres, com maiúscula, minúscula e número.
+                  </p>
+                </div>
+              )}
+              {dialogError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {dialogError}
+                </p>
+              )}
+              <DialogFooter className="gap-2 sm:space-x-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditor(null)}
+                  disabled={pending !== null}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={pending !== null}>
+                  {pending !== null && <LoaderCircle className="size-4 animate-spin" />}
+                  {editor.user ? "Salvar alterações" : "Cadastrar usuário"}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open && pending === null) setDeleting(null);
+        }}
+      >
+        <AlertDialogContent
+          className="w-[calc(100%-2rem)] rounded-xl"
+          onCloseAutoFocus={restoreDialogFocus}
+        >
+          <AlertDialogHeader className="text-left">
+            <AlertDialogTitle>Excluir cadastro?</AlertDialogTitle>
+            <AlertDialogDescription className="[overflow-wrap:anywhere]">
+              A exclusão de <strong>{deleting?.name}</strong> ({deleting?.email}) é permanente e
+              encerra o acesso ao painel.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {dialogError && (
+            <p role="alert" className="text-sm text-destructive">
+              {dialogError}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending !== null}>Cancelar</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={pending !== null}
+              onClick={() => void removeUser()}
+            >
+              {pending !== null && <LoaderCircle className="size-4 animate-spin" />}
+              Excluir cadastro
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }

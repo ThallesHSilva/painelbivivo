@@ -16,18 +16,19 @@ import {
   Upload,
   ChevronDown,
   BriefcaseBusiness,
-  MonitorPlay,
+  FileText,
   LogOut,
   LoaderCircle,
   UserCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useTheme } from "@/contexts/AppContexts";
+import { usePartnerFilter, useTheme } from "@/contexts/AppContexts";
+import type { AuthRole } from "@/lib/auth.server";
 import { PartnerFilter } from "@/components/PartnerFilter";
 
 const PRIMARY_NAV = [
-  { to: "/resultados", label: "Visão resultado", icon: ChartNoAxesCombined },
+  { to: "/qsc", label: "QSC", icon: ClipboardCheck },
   { to: "/certificacao", label: "Certificação", icon: Award },
 ] as const;
 
@@ -41,8 +42,7 @@ const OPPORTUNITY_NAV = [
 
 const SECONDARY_NAV = [
   { to: "/quartil", label: "Quartil", icon: ChartNoAxesCombined },
-  { to: "/qsc", label: "QSC", icon: ClipboardCheck },
-  { to: "/pbi", label: "PBI", icon: MonitorPlay },
+  { to: "/relatorio-executivo", label: "Relatório executivo", icon: FileText },
 ] as const;
 const DATA_NAV = { to: "/alimentacao", label: "Alimentar dados", icon: Upload } as const;
 const ADMIN_NAV = { to: "/usuarios", label: "Acessos", icon: UserCog } as const;
@@ -60,7 +60,7 @@ function NavItems({
 }: {
   mobile?: boolean;
   onNavigate?: () => void;
-  role?: "admin" | "director" | "gn" | null;
+  role?: AuthRole | null;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const opportunitiesActive = OPPORTUNITY_NAV.some((item) => pathname === item.to);
@@ -113,7 +113,6 @@ function NavItems({
         </div>
         {PRIMARY_NAV.slice(1).map((item) => navLink(item))}
         {SECONDARY_NAV.map((item) => navLink(item))}
-        {role === "director" && navLink(ADMIN_NAV)}
         {navLink(DATA_NAV)}
       </nav>
     );
@@ -229,7 +228,7 @@ function Header({
   title,
 }: {
   onMenu: () => void;
-  role: "admin" | "director" | "gn" | null;
+  role: AuthRole | null;
   title: string;
 }) {
   const { theme, toggle } = useTheme();
@@ -289,7 +288,7 @@ function Header({
           >
             {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>
-          {(role === "admin" || role === "director") && (
+          {role === "admin" && (
             <Button asChild variant="outline" size="icon" className="shrink-0 text-primary">
               <Link to="/usuarios" aria-label="Gerenciar acessos" title="Gerenciar acessos">
                 <UserCog className="size-4" />
@@ -325,16 +324,7 @@ function Header({
 
 export function DashboardLayout({ title, children }: { title: string; children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [role, setRole] = useState<"admin" | "director" | "gn" | null>(null);
-
-  useEffect(() => {
-    void fetch("/api/auth/session", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((session: { user?: { role?: "admin" | "director" | "gn" } }) =>
-        setRole(session.user?.role ?? null),
-      )
-      .catch(() => setRole(null));
-  }, []);
+  const { role } = usePartnerFilter();
 
   return (
     <div className="dashboard-shell min-h-screen w-full">

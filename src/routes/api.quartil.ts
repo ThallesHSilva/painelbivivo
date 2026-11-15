@@ -27,12 +27,9 @@ export const Route = createFileRoute("/api/quartil")({
           ]),
         );
         const requested = new URL(request.url).searchParams.getAll("partner");
-        const authorized = snapshot.partners.filter(
-          (p) => user.role === "director" || user.partnerIds.includes(canonical.get(p.id)!.id),
-        );
         const partners = [
           ...new Map(
-            authorized.map((p) => {
+            snapshot.partners.map((p) => {
               const partner = canonical.get(p.id)!;
               return [partner.id, partner];
             }),
@@ -42,7 +39,7 @@ export const Route = createFileRoute("/api/quartil")({
           return Response.json({ partners }, { headers: { "Cache-Control": "no-store" } });
         }
         const ids = new Set(
-          authorized
+          snapshot.partners
             .filter((p) => !requested.length || requested.includes(canonical.get(p.id)!.id))
             .map((p) => p.id),
         );

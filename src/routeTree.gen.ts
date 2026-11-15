@@ -11,11 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsuariosRouteImport } from './routes/usuarios'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as ResultadosRouteImport } from './routes/resultados'
 import { Route as RelatorioExecutivoRouteImport } from './routes/relatorio-executivo'
 import { Route as QuartilRouteImport } from './routes/quartil'
 import { Route as QscRouteImport } from './routes/qsc'
-import { Route as PbiRouteImport } from './routes/pbi'
 import { Route as MovelRouteImport } from './routes/movel'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LicencasRouteImport } from './routes/licencas'
@@ -28,7 +26,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiQuartilRouteImport } from './routes/api.quartil'
 import { Route as ApiQscRouteImport } from './routes/api.qsc'
 import { Route as ApiInvasaoRouteImport } from './routes/api.invasao'
-import { Route as ApiDirectorAccessRouteImport } from './routes/api.director.access'
 import { Route as ApiDataUploadRouteImport } from './routes/api.data.upload'
 import { Route as ApiDataResultadosRouteImport } from './routes/api.data.resultados'
 import { Route as ApiDataMapaRouteImport } from './routes/api.data.mapa'
@@ -49,11 +46,6 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ResultadosRoute = ResultadosRouteImport.update({
-  id: '/resultados',
-  path: '/resultados',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const RelatorioExecutivoRoute = RelatorioExecutivoRouteImport.update({
   id: '/relatorio-executivo',
   path: '/relatorio-executivo',
@@ -67,11 +59,6 @@ const QuartilRoute = QuartilRouteImport.update({
 const QscRoute = QscRouteImport.update({
   id: '/qsc',
   path: '/qsc',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PbiRoute = PbiRouteImport.update({
-  id: '/pbi',
-  path: '/pbi',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MovelRoute = MovelRouteImport.update({
@@ -134,11 +121,6 @@ const ApiInvasaoRoute = ApiInvasaoRouteImport.update({
   path: '/api/invasao',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiDirectorAccessRoute = ApiDirectorAccessRouteImport.update({
-  id: '/api/director/access',
-  path: '/api/director/access',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiDataUploadRoute = ApiDataUploadRouteImport.update({
   id: '/api/data/upload',
   path: '/api/data/upload',
@@ -195,11 +177,9 @@ export interface FileRoutesByFullPath {
   '/licencas': typeof LicencasRoute
   '/login': typeof LoginRoute
   '/movel': typeof MovelRoute
-  '/pbi': typeof PbiRoute
   '/qsc': typeof QscRoute
   '/quartil': typeof QuartilRoute
   '/relatorio-executivo': typeof RelatorioExecutivoRoute
-  '/resultados': typeof ResultadosRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
@@ -214,7 +194,6 @@ export interface FileRoutesByFullPath {
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
   '/api/data/upload': typeof ApiDataUploadRoute
-  '/api/director/access': typeof ApiDirectorAccessRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -226,11 +205,9 @@ export interface FileRoutesByTo {
   '/licencas': typeof LicencasRoute
   '/login': typeof LoginRoute
   '/movel': typeof MovelRoute
-  '/pbi': typeof PbiRoute
   '/qsc': typeof QscRoute
   '/quartil': typeof QuartilRoute
   '/relatorio-executivo': typeof RelatorioExecutivoRoute
-  '/resultados': typeof ResultadosRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
@@ -245,7 +222,6 @@ export interface FileRoutesByTo {
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
   '/api/data/upload': typeof ApiDataUploadRoute
-  '/api/director/access': typeof ApiDirectorAccessRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -258,11 +234,9 @@ export interface FileRoutesById {
   '/licencas': typeof LicencasRoute
   '/login': typeof LoginRoute
   '/movel': typeof MovelRoute
-  '/pbi': typeof PbiRoute
   '/qsc': typeof QscRoute
   '/quartil': typeof QuartilRoute
   '/relatorio-executivo': typeof RelatorioExecutivoRoute
-  '/resultados': typeof ResultadosRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
@@ -277,7 +251,6 @@ export interface FileRoutesById {
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
   '/api/data/upload': typeof ApiDataUploadRoute
-  '/api/director/access': typeof ApiDirectorAccessRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -291,11 +264,9 @@ export interface FileRouteTypes {
     | '/licencas'
     | '/login'
     | '/movel'
-    | '/pbi'
     | '/qsc'
     | '/quartil'
     | '/relatorio-executivo'
-    | '/resultados'
     | '/sitemap.xml'
     | '/usuarios'
     | '/api/invasao'
@@ -310,7 +281,6 @@ export interface FileRouteTypes {
     | '/api/data/mapa'
     | '/api/data/resultados'
     | '/api/data/upload'
-    | '/api/director/access'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -322,11 +292,9 @@ export interface FileRouteTypes {
     | '/licencas'
     | '/login'
     | '/movel'
-    | '/pbi'
     | '/qsc'
     | '/quartil'
     | '/relatorio-executivo'
-    | '/resultados'
     | '/sitemap.xml'
     | '/usuarios'
     | '/api/invasao'
@@ -341,7 +309,6 @@ export interface FileRouteTypes {
     | '/api/data/mapa'
     | '/api/data/resultados'
     | '/api/data/upload'
-    | '/api/director/access'
   id:
     | '__root__'
     | '/'
@@ -353,11 +320,9 @@ export interface FileRouteTypes {
     | '/licencas'
     | '/login'
     | '/movel'
-    | '/pbi'
     | '/qsc'
     | '/quartil'
     | '/relatorio-executivo'
-    | '/resultados'
     | '/sitemap.xml'
     | '/usuarios'
     | '/api/invasao'
@@ -372,7 +337,6 @@ export interface FileRouteTypes {
     | '/api/data/mapa'
     | '/api/data/resultados'
     | '/api/data/upload'
-    | '/api/director/access'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -385,11 +349,9 @@ export interface RootRouteChildren {
   LicencasRoute: typeof LicencasRoute
   LoginRoute: typeof LoginRoute
   MovelRoute: typeof MovelRoute
-  PbiRoute: typeof PbiRoute
   QscRoute: typeof QscRoute
   QuartilRoute: typeof QuartilRoute
   RelatorioExecutivoRoute: typeof RelatorioExecutivoRoute
-  ResultadosRoute: typeof ResultadosRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   UsuariosRoute: typeof UsuariosRoute
   ApiInvasaoRoute: typeof ApiInvasaoRoute
@@ -404,7 +366,6 @@ export interface RootRouteChildren {
   ApiDataMapaRoute: typeof ApiDataMapaRoute
   ApiDataResultadosRoute: typeof ApiDataResultadosRoute
   ApiDataUploadRoute: typeof ApiDataUploadRoute
-  ApiDirectorAccessRoute: typeof ApiDirectorAccessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -421,13 +382,6 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/resultados': {
-      id: '/resultados'
-      path: '/resultados'
-      fullPath: '/resultados'
-      preLoaderRoute: typeof ResultadosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/relatorio-executivo': {
@@ -449,13 +403,6 @@ declare module '@tanstack/react-router' {
       path: '/qsc'
       fullPath: '/qsc'
       preLoaderRoute: typeof QscRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pbi': {
-      id: '/pbi'
-      path: '/pbi'
-      fullPath: '/pbi'
-      preLoaderRoute: typeof PbiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/movel': {
@@ -542,13 +489,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInvasaoRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/director/access': {
-      id: '/api/director/access'
-      path: '/api/director/access'
-      fullPath: '/api/director/access'
-      preLoaderRoute: typeof ApiDirectorAccessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/data/upload': {
       id: '/api/data/upload'
       path: '/api/data/upload'
@@ -625,11 +565,9 @@ const rootRouteChildren: RootRouteChildren = {
   LicencasRoute: LicencasRoute,
   LoginRoute: LoginRoute,
   MovelRoute: MovelRoute,
-  PbiRoute: PbiRoute,
   QscRoute: QscRoute,
   QuartilRoute: QuartilRoute,
   RelatorioExecutivoRoute: RelatorioExecutivoRoute,
-  ResultadosRoute: ResultadosRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   UsuariosRoute: UsuariosRoute,
   ApiInvasaoRoute: ApiInvasaoRoute,
@@ -644,7 +582,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDataMapaRoute: ApiDataMapaRoute,
   ApiDataResultadosRoute: ApiDataResultadosRoute,
   ApiDataUploadRoute: ApiDataUploadRoute,
-  ApiDirectorAccessRoute: ApiDirectorAccessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

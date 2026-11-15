@@ -26,20 +26,16 @@ const authMiddleware = createMiddleware().server(async ({ request, pathname, nex
     const user = await readAuthUser();
     if (user) {
       const adminOnly = pathname.startsWith("/api/admin/");
-      const directorOnly = pathname.startsWith("/api/director/");
       const accessManagement = pathname === "/usuarios";
       if (adminOnly && user.role !== "admin") {
         return Response.json({ message: "Acesso restrito ao administrador." }, { status: 403 });
       }
-      if (directorOnly && user.role !== "director") {
-        return Response.json({ message: "Acesso restrito ao diretor." }, { status: 403 });
-      }
-      if (accessManagement && user.role !== "admin" && user.role !== "director") {
+      if (accessManagement && user.role !== "admin") {
         return new Response(null, {
           status: 302,
           headers: {
             "Cache-Control": "no-store",
-            Location: publicUrl("/resultados", request).toString(),
+            Location: publicUrl("/", request).toString(),
           },
         });
       }

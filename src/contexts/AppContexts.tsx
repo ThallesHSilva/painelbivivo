@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 
+import type { AuthRole } from "@/lib/auth.server";
+
 /* ---------------- Theme ---------------- */
 type Theme = "light" | "dark";
 interface ThemeCtx {
@@ -57,9 +59,7 @@ export function useTheme() {
 /* ---------------- Partner Filter ---------------- */
 interface PartnerFilterCtx {
   selected: string[]; // empty = all
-  effectiveSelected: string[];
-  role: "admin" | "director" | "gn" | null;
-  allowedPartnerIds: string[] | null;
+  role: AuthRole | null;
   setSelected: (ids: string[]) => void;
   toggle: (id: string) => void;
   clear: () => void;
@@ -70,7 +70,6 @@ const PartnerFilterContext = createContext<PartnerFilterCtx | null>(null);
 export function PartnerFilterProvider({ children }: { children: ReactNode }) {
   const [selected, setSelectedState] = useState<string[]>([]);
   const [role, setRole] = useState<PartnerFilterCtx["role"]>(null);
-  const [allowedPartnerIds, setAllowedPartnerIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     try {
@@ -87,15 +86,7 @@ export function PartnerFilterProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void fetch("/api/auth/session", { cache: "no-store" })
       .then((response) => response.json())
-      .then((payload: { user?: { role?: PartnerFilterCtx["role"]; partnerIds?: string[] } }) => {
-        const sessionRole = payload.user?.role ?? null;
-        const assigned = sessionRole === "gn" ? (payload.user?.partnerIds ?? []) : null;
-        setRole(sessionRole);
-        setAllowedPartnerIds(assigned);
-        if (assigned) {
-          setSelectedState((current) => current.filter((id) => assigned.includes(id)));
-        }
-      })
+      .then((payload: { user?: { role?: AuthRole } }) => setRole(payload.user?.role ?? null))
       .catch(() => undefined);
   }, []);
 
@@ -117,27 +108,16 @@ export function PartnerFilterProvider({ children }: { children: ReactNode }) {
 
   const clear = useCallback(() => setSelected([]), [setSelected]);
 
-  const effectiveSelected = useMemo(
-    () =>
-      role === "gn" && selected.length === 0
-        ? allowedPartnerIds?.length
-          ? allowedPartnerIds
-          : ["__no_partner_access__"]
-        : selected,
-    [role, selected, allowedPartnerIds],
-  );
   const value = useMemo(
     () => ({
       selected,
-      effectiveSelected,
       role,
-      allowedPartnerIds,
       setSelected,
       toggle,
       clear,
       isAll: selected.length === 0,
     }),
-    [selected, effectiveSelected, role, allowedPartnerIds, setSelected, toggle, clear],
+    [selected, role, setSelected, toggle, clear],
   );
   return <PartnerFilterContext.Provider value={value}>{children}</PartnerFilterContext.Provider>;
 }

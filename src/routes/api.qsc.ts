@@ -153,18 +153,10 @@ export const Route = createFileRoute("/api/qsc")({
         const url = new URL(request.url);
         const requestedIds = url.searchParams.getAll("partner");
         const availableIds = new Set(qscSnapshot.partners.map((partner) => partner.id));
-        const authorizedIds =
-          user.role === "gn"
-            ? new Set(user.partnerIds.filter((id) => availableIds.has(id)))
-            : availableIds;
-        const selectedIds = [
-          ...new Set(
-            (requestedIds.length ? requestedIds : [...authorizedIds]).filter((id) =>
-              authorizedIds.has(id),
-            ),
-          ),
-        ];
-        const hasPartnerFilter = user.role === "gn" || requestedIds.length > 0;
+        const hasPartnerFilter = requestedIds.length > 0;
+        const selectedIds = hasPartnerFilter
+          ? [...new Set(requestedIds.filter((id) => availableIds.has(id)))]
+          : [...availableIds];
         const selectedPartners = hasPartnerFilter
           ? qscSnapshot.partners.filter((partner) => selectedIds.includes(partner.id))
           : qscSnapshot.partners;

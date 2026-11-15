@@ -35,7 +35,7 @@ export const Route = createFileRoute("/movel")({
 
 function Page() {
   const { data, isLoading, error, refetch } = useMobile();
-  const { effectiveSelected, selected, role, allowedPartnerIds } = usePartnerFilter();
+  const { selected } = usePartnerFilter();
   const { data: partners = [] } = usePartners();
 
   /**
@@ -46,14 +46,11 @@ function Page() {
     () => selected.map((id) => partners.find((partner) => partner.id === id)?.name ?? id),
     [partners, selected],
   );
-  const allowedCount = allowedPartnerIds?.length ?? 0;
   const scopeLabel = selected.length
     ? selected.length === 1
       ? selectedNames[0]
       : `${selected.length} parceiros selecionados`
-    : role === "gn"
-      ? `${allowedCount} ${allowedCount === 1 ? "parceiro autorizado" : "parceiros autorizados"}`
-      : "Todos os parceiros (consolidado)";
+    : "Todos os parceiros (consolidado)";
 
   const partnerRows = data?.porParceiro ?? [];
   const composition = data?.composicao ?? [];
@@ -66,7 +63,7 @@ function Page() {
       title={`Exportar base: ${title}`}
       aria-label={`Exportar base de clientes: ${title}`}
       className="size-8"
-      onClick={() => exportOpportunityBase(kind, effectiveSelected)}
+      onClick={() => exportOpportunityBase(kind, selected)}
     >
       <Download className="size-4" />
     </Button>
