@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { loadEnvFile } from "node:process";
+import dns from "node:dns/promises";
 
 try {
   loadEnvFile();
@@ -76,8 +77,11 @@ export function emailConfiguration() {
     host: SMTP_HOST,
     port,
     auth: useAuthentication ? { user: SMTP_USER!, pass: SMTP_PASSWORD! } : undefined,
+    useIpAuthentication:
+      !useAuthentication && SMTP_HOST.trim().toLowerCase() === "smtp-relay.gmail.com",
     from,
     origin: origin.origin,
+    serverName: origin.hostname,
   };
 }
 
@@ -85,18 +89,6 @@ export async function sendVerificationEmail(email: string, token: string) {
   const configuration = emailConfiguration();
   const link = new URL("/login", configuration.origin);
   link.hash = `verify=${token}`;
-  const transport = nodemailer.createTransport({
-    host: configuration.host,
-    port: configuration.port,
-    secure: configuration.port === 465,
-    requireTLS: configuration.port !== 465,
-    auth: configuration.auth,
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 15_000,
-    disableFileAccess: true,
-    disableUrlAccess: true,
-  });
   const text = [
     "Confirme seu e-mail — Painel executivo",
     "",
@@ -107,7 +99,26 @@ export async function sendVerificationEmail(email: string, token: string) {
     "O acesso ao painel também depende da aprovação do administrador.",
     "Se você não solicitou este cadastro, ignore esta mensagem.",
   ].join("\n");
+  let transport: ReturnType<typeof nodemailer.createTransport> | undefined;
   try {
+    // The existing Workspace relay authorizes the VPS's public IPv4 address.
+    const host = configuration.useIpAuthentication
+      ? (await dns.lookup(configuration.host, { family: 4 })).address
+      : configuration.host;
+    transport = nodemailer.createTransport({
+      host,
+      port: configuration.port,
+      name: configuration.serverName,
+      tls: configuration.useIpAuthentication ? { servername: configuration.host } : undefined,
+      secure: configuration.port === 465,
+      requireTLS: configuration.port !== 465,
+      auth: configuration.auth,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
+      disableFileAccess: true,
+      disableUrlAccess: true,
+    });
     const result = await transport.sendMail({
       from: configuration.from,
       to: { address: email, name: "" },
@@ -118,6 +129,6 @@ export async function sendVerificationEmail(email: string, token: string) {
   } catch {
     throw new EmailDeliveryError();
   } finally {
-    transport.close();
+    transport?.close();
   }
 }

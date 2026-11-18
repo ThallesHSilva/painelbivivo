@@ -45,6 +45,7 @@ gerar essa senha. Defina `APP_ORIGIN` com a URL HTTPS pública do painel.
 O relay do Google Workspace também é suportado com `SMTP_HOST=smtp-relay.gmail.com`,
 `SMTP_PORT=587`, `SMTP_AUTH=auto` e `SMTP_FROM` com o remetente autorizado. Nesse modo,
 a conexão usa TLS e a autenticação é feita pelo IP da VPS autorizado no Google Workspace.
+O envio pelo relay usa o IPv4 da VPS e identifica o servidor com o domínio de `APP_ORIGIN`.
 `MAIL_FROM`, quando definido, tem prioridade sobre `SMTP_FROM`.
 
 Em uma implantação pelo Coolify, cadastre essas variáveis em **Environment Variables**,

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import nodemailer from "nodemailer";
+import dns from "node:dns/promises";
+import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
 import {
   emailConfiguration,
   EmailConfigurationError,
@@ -38,29 +40,32 @@ test("mail configuration and delivery", async (t) => {
     APP_ORIGIN: "https://painel.example.com",
   });
   const messages: Array<{ to: { address: string }; text: string }> = [];
-  const transports: Array<{ secure: boolean; requireTLS: boolean }> = [];
+  const transports: SMTPTransport.Options[] = [];
   let fails = false;
   let closed = 0;
-  mock.method(
-    nodemailer,
-    "createTransport",
-    (options: { secure: boolean; requireTLS: boolean }) => {
-      transports.push(options);
-      return {
-        sendMail: async (message: { to: { address: string }; text: string }) => {
-          if (fails) throw new Error("Provider error with credentials that must remain private");
-          messages.push(message);
-          return { accepted: [message.to.address], rejected: [] };
-        },
-        close: () => closed++,
-      };
-    },
-  );
+  mock.method(nodemailer, "createTransport", (options: SMTPTransport.Options) => {
+    transports.push(options);
+    return {
+      sendMail: async (message: { to: { address: string }; text: string }) => {
+        if (fails) throw new Error("Provider error with credentials that must remain private");
+        messages.push(message);
+        return { accepted: [message.to.address], rejected: [] };
+      },
+      close: () => closed++,
+    };
+  });
+  const lookups: Array<{ hostname: string; family: number }> = [];
+  mock.method(dns, "lookup", async (hostname: string, options: { family: number }) => {
+    lookups.push({ hostname, family: options.family });
+    return { address: "192.0.2.1", family: 4 };
+  });
   await sendVerificationEmail("user@example.com", "a".repeat(64));
   assert.equal(messages[0].to.address, "user@example.com");
   assert.match(messages[0].text, /https:\/\/painel.example.com\/login#verify=a{64}/);
   assert.equal(transports[0].secure, false);
   assert.equal(transports[0].requireTLS, true);
+  assert.equal(transports[0].name, "painel.example.com");
+  assert.deepEqual(transports[0].auth, { user: "user", pass: "fixture" });
   process.env.SMTP_PORT = "465";
   await sendVerificationEmail("user@example.com", "b".repeat(64));
   assert.equal(transports[1].secure, true);
@@ -75,6 +80,11 @@ test("mail configuration and delivery", async (t) => {
   assert.equal(emailConfiguration().from, "sender@example.com");
   await sendVerificationEmail("user@example.com", "d".repeat(64));
   assert.equal(transports[2].requireTLS, true);
+  assert.equal(transports[2].auth, undefined);
+  assert.equal(transports[2].name, "painel.example.com");
+  assert.deepEqual(lookups, [{ hostname: "smtp-relay.gmail.com", family: 4 }]);
+  assert.equal(transports[2].host, "192.0.2.1");
+  assert.equal(transports[2].tls?.servername, "smtp-relay.gmail.com");
   process.env.SMTP_HOST = "smtp.gmail.com";
   assert.throws(emailConfiguration, EmailConfigurationError);
   process.env.SMTP_USER = "user@example.com";
