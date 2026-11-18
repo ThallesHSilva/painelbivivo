@@ -42,6 +42,11 @@ Configure `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASSWO
 `SMTP_PASSWORD`. A conta Google precisa ter verificação em duas etapas habilitada para
 gerar essa senha. Defina `APP_ORIGIN` com a URL HTTPS pública do painel.
 
+O relay do Google Workspace também é suportado com `SMTP_HOST=smtp-relay.gmail.com`,
+`SMTP_PORT=587`, `SMTP_AUTH=auto` e `SMTP_FROM` com o remetente autorizado. Nesse modo,
+a conexão usa TLS e a autenticação é feita pelo IP da VPS autorizado no Google Workspace.
+`MAIL_FROM`, quando definido, tem prioridade sobre `SMTP_FROM`.
+
 Em uma implantação pelo Coolify, cadastre essas variáveis em **Environment Variables**,
 disponíveis no contêiner de produção. O arquivo `.env` local é ignorado pelo Git e pela
 imagem Docker. Na implantação por Docker Compose, o arquivo `.env` é lido pelo serviço.

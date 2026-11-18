@@ -27,20 +27,30 @@ export function emailConfiguration() {
     SMTP_PORT = "587",
     SMTP_USER,
     SMTP_PASSWORD,
+    SMTP_AUTH = "true",
+    SMTP_FROM,
     MAIL_FROM,
     APP_ORIGIN,
   } = process.env;
   const port = Number(SMTP_PORT);
+  const authMode = SMTP_AUTH.trim().toLowerCase();
+  const authenticatedModes = ["1", "true", "yes", "on"];
+  const validAuthModes = [...authenticatedModes, "0", "false", "no", "off", "auto"];
+  const useAuthentication =
+    authMode === "auto"
+      ? SMTP_HOST?.trim().toLowerCase() !== "smtp-relay.gmail.com"
+      : authenticatedModes.includes(authMode);
+  const from = MAIL_FROM?.trim() || SMTP_FROM?.trim();
   if (
     !SMTP_HOST ||
-    !SMTP_USER ||
-    !SMTP_PASSWORD ||
-    !MAIL_FROM ||
+    (useAuthentication && (!SMTP_USER || !SMTP_PASSWORD)) ||
+    !validAuthModes.includes(authMode) ||
+    !from ||
     !APP_ORIGIN ||
     !Number.isInteger(port) ||
     port < 1 ||
     port > 65535 ||
-    /[\r\n]/.test(MAIL_FROM)
+    /[\r\n]/.test(from)
   ) {
     throw new EmailConfigurationError();
   }
@@ -65,9 +75,8 @@ export function emailConfiguration() {
   return {
     host: SMTP_HOST,
     port,
-    user: SMTP_USER,
-    password: SMTP_PASSWORD,
-    from: MAIL_FROM,
+    auth: useAuthentication ? { user: SMTP_USER!, pass: SMTP_PASSWORD! } : undefined,
+    from,
     origin: origin.origin,
   };
 }
@@ -81,7 +90,7 @@ export async function sendVerificationEmail(email: string, token: string) {
     port: configuration.port,
     secure: configuration.port === 465,
     requireTLS: configuration.port !== 465,
-    auth: { user: configuration.user, pass: configuration.password },
+    auth: configuration.auth,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 15_000,

@@ -9,7 +9,16 @@ import {
 } from "./email.server.ts";
 
 test("mail configuration and delivery", async (t) => {
-  const keys = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "MAIL_FROM", "APP_ORIGIN"];
+  const keys = [
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "SMTP_AUTH",
+    "SMTP_FROM",
+    "MAIL_FROM",
+    "APP_ORIGIN",
+  ];
   const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   t.after(() => {
     for (const key of keys) {
@@ -55,12 +64,31 @@ test("mail configuration and delivery", async (t) => {
   process.env.SMTP_PORT = "465";
   await sendVerificationEmail("user@example.com", "b".repeat(64));
   assert.equal(transports[1].secure, true);
+  process.env.SMTP_HOST = "smtp-relay.gmail.com";
+  process.env.SMTP_PORT = "587";
+  process.env.SMTP_AUTH = "auto";
+  delete process.env.MAIL_FROM;
+  process.env.SMTP_FROM = "sender@example.com";
+  delete process.env.SMTP_USER;
+  delete process.env.SMTP_PASSWORD;
+  assert.equal(emailConfiguration().auth, undefined);
+  assert.equal(emailConfiguration().from, "sender@example.com");
+  await sendVerificationEmail("user@example.com", "d".repeat(64));
+  assert.equal(transports[2].requireTLS, true);
+  process.env.SMTP_HOST = "smtp.gmail.com";
+  assert.throws(emailConfiguration, EmailConfigurationError);
+  process.env.SMTP_USER = "user@example.com";
+  process.env.SMTP_PASSWORD = "fixture";
+  assert.deepEqual(emailConfiguration().auth, { user: "user@example.com", pass: "fixture" });
+  process.env.SMTP_AUTH = "invalid";
+  assert.throws(emailConfiguration, EmailConfigurationError);
+  process.env.SMTP_AUTH = "true";
   fails = true;
   await assert.rejects(
     sendVerificationEmail("user@example.com", "c".repeat(64)),
     EmailDeliveryError,
   );
-  assert.equal(closed, 3);
+  assert.equal(closed, 4);
   process.env.APP_ORIGIN = "https://user:secret@panel.example.com";
   assert.throws(emailConfiguration, EmailConfigurationError);
   process.env.APP_ORIGIN = "https://panel.example.com";
