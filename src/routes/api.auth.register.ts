@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { isSameOriginRequest, register, validUserPassword } from "@/lib/auth.server";
+import { EmailConfigurationError } from "@/lib/email.server";
 
 export const Route = createFileRoute("/api/auth/register")({
   server: {
@@ -41,11 +42,17 @@ export const Route = createFileRoute("/api/auth/register")({
           return Response.json(
             {
               registered: true,
-              message: "Cadastro enviado. Aguarde a aprovação do administrador para entrar.",
+              emailSent: result.emailSent,
+              message: result.emailSent
+                ? "Enviamos um link para seu e-mail. Confirme seu endereço para continuar. O acesso também depende da aprovação do administrador."
+                : "Seu cadastro foi salvo, mas o envio do e-mail falhou. Reenvie o link em um minuto.",
             },
             { status: 201, headers: { "Cache-Control": "no-store" } },
           );
-        } catch {
+        } catch (error) {
+          if (error instanceof EmailConfigurationError) {
+            return Response.json({ message: error.message }, { status: 503 });
+          }
           return Response.json(
             { message: "Não foi possível concluir o cadastro." },
             { status: 400 },

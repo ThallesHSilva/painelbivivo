@@ -1,5 +1,12 @@
 import { clearSession, getSession, updateSession } from "@tanstack/react-start/server";
-import { createPendingUser, findUserByEmail, listUsers, registerUserLogin } from "@/lib/database.server";
+import {
+  createPendingUser,
+  findUserByEmail,
+  listUsers,
+  registerUserLogin,
+} from "@/lib/database.server";
+import { emailConfiguration, EmailDeliveryError } from "@/lib/email.server";
+import { requestEmailVerification } from "@/lib/email-verification.server";
 
 export type AuthRole = "admin" | "client";
 
@@ -18,7 +25,8 @@ type AuthSessionData = {
 };
 
 export type LoginResult =
-  { ok: true; user: AuthUser } | { ok: false; reason: "invalid" | "pending" | "rejected" };
+  | { ok: true; user: AuthUser }
+  | { ok: false; reason: "invalid" | "pending" | "rejected" | "unverified" };
 
 const SESSION_NAME = "mapa-parque-session";
 const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
@@ -174,7 +182,7 @@ async function derivePassword(password: string, salt: Uint8Array, iterations: nu
     ["deriveBits"],
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    { name: "PBKDF2", hash: "SHA-256", salt: new Uint8Array(salt), iterations },
     key,
     256,
   );
@@ -263,6 +271,8 @@ export async function login(email: string, password: string): Promise<LoginResul
   if (!storedUser || !(await verifyPassword(password, storedUser.passwordHash))) {
     return { ok: false, reason: "invalid" };
   }
+  if (storedUser.status === "rejected") return { ok: false, reason: "rejected" };
+  if (!storedUser.emailVerifiedAt) return { ok: false, reason: "unverified" };
   if (storedUser.status !== "approved") return { ok: false, reason: storedUser.status };
 
   const user: AuthUser = {
@@ -287,15 +297,23 @@ export async function register(input: {
   if (isAdministratorEmail(email) || findUserByEmail(email)) {
     return { ok: false as const, reason: "exists" as const };
   }
+  emailConfiguration();
   const id = createPendingUser({
     name: input.name.trim(),
     email,
     partnerName: input.partnerName.trim(),
     passwordHash: await hashPassword(input.password),
   });
-  return id === null
-    ? { ok: false as const, reason: "exists" as const }
-    : { ok: true as const, id };
+  if (id === null) return { ok: false as const, reason: "exists" as const };
+  try {
+    const user = findUserByEmail(email);
+    if (!user) throw new Error("O cadastro foi removido durante a solicitação.");
+    await requestEmailVerification(user);
+    return { ok: true as const, id, emailSent: true };
+  } catch (error) {
+    if (!(error instanceof EmailDeliveryError)) throw error;
+    return { ok: true as const, id, emailSent: false };
+  }
 }
 
 export function validUserPassword(value: string) {
@@ -319,7 +337,12 @@ export async function readAuthUser(): Promise<AuthUser | null> {
     return null;
   }
   const storedUser = findUserByEmail(sessionUser.email);
-  if (!storedUser || storedUser.status !== "approved" || storedUser.id !== sessionUser.id) {
+  if (
+    !storedUser ||
+    !storedUser.emailVerifiedAt ||
+    storedUser.status !== "approved" ||
+    storedUser.id !== sessionUser.id
+  ) {
     await clearSession({ name: SESSION_NAME });
     return null;
   }

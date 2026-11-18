@@ -26,6 +26,7 @@ export const Route = createFileRoute("/api/auth/login")({
               invalid: "E-mail ou senha incorretos.",
               pending: "Seu cadastro ainda está aguardando aprovação do administrador.",
               rejected: "Este cadastro não foi autorizado. Fale com o administrador.",
+              unverified: "Confirme seu e-mail para continuar. Você pode reenviar o link abaixo.",
             };
             return Response.json(
               { message: messages[result.reason], reason: result.reason },

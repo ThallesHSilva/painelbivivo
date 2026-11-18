@@ -1,6 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, CheckCircle2, Eye, EyeOff, LoaderCircle, LockKeyhole } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  LoaderCircle,
+  LockKeyhole,
+  Mail,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,15 +41,36 @@ function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [registered, setRegistered] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [verificationToken, setVerificationToken] = useState<string | null>(null);
+  const [verified, setVerified] = useState(false);
+  const [verificationNeeded, setVerificationNeeded] = useState(false);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    void fetch("/api/auth/session", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((session: { authenticated?: boolean; user?: { role?: AuthRole } }) => {
-        if (session.authenticated)
-          window.location.replace(session.user?.role === "admin" ? "/usuarios" : safeRedirect());
-      })
-      .catch(() => undefined);
+    function readVerificationLink() {
+      const token = new URLSearchParams(window.location.hash.slice(1)).get("verify");
+      if (!token) return false;
+      setVerificationToken(token);
+      setVerified(false);
+      setRegistered(false);
+      setMode("login");
+      setMessage("");
+      setNotice("");
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      return true;
+    }
+    window.addEventListener("hashchange", readVerificationLink);
+    if (!readVerificationLink()) {
+      void fetch("/api/auth/session", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((session: { authenticated?: boolean; user?: { role?: AuthRole } }) => {
+          if (session.authenticated)
+            window.location.replace(session.user?.role === "admin" ? "/usuarios" : safeRedirect());
+        })
+        .catch(() => undefined);
+    }
+    return () => window.removeEventListener("hashchange", readVerificationLink);
   }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -49,6 +78,8 @@ function LoginPage() {
     if (submitting) return;
     setSubmitting(true);
     setMessage("");
+    setNotice("");
+    setVerificationNeeded(false);
 
     try {
       const response = await fetch(mode === "login" ? "/api/auth/login" : "/api/auth/register", {
@@ -56,17 +87,78 @@ function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
       });
-      const payload = (await response.json()) as { message?: string; user?: { role?: AuthRole } };
+      const payload = (await response.json()) as {
+        message?: string;
+        reason?: string;
+        emailSent?: boolean;
+        user?: { role?: AuthRole };
+      };
       if (!response.ok) {
         setMessage(payload.message ?? "Não foi possível entrar.");
+        setVerificationNeeded(payload.reason === "unverified" || response.status === 409);
         return;
       }
       if (mode === "register") {
         setRegistered(true);
-        setMessage(payload.message ?? "Cadastro enviado para aprovação.");
+        setEmailSent(payload.emailSent === true);
+        if (payload.emailSent) {
+          setMessage("");
+          setNotice(payload.message ?? "Enviamos o link de confirmação para seu e-mail.");
+        } else {
+          setMessage(payload.message ?? "Seu cadastro foi salvo, mas o envio do e-mail falhou.");
+        }
       } else {
         window.location.replace(payload.user?.role === "admin" ? "/usuarios" : safeRedirect());
       }
+    } catch {
+      setMessage("Não foi possível conectar ao servidor. Tente novamente.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resendVerification = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setNotice("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const payload = (await response.json()) as { message: string };
+      if (!response.ok) {
+        setMessage(payload.message);
+        return;
+      }
+      setEmailSent(true);
+      setNotice(payload.message);
+    } catch {
+      setMessage("Não foi possível conectar ao servidor. Tente novamente.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const confirmEmail = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: verificationToken }),
+      });
+      const payload = (await response.json()) as { message: string };
+      if (!response.ok) {
+        setMessage(payload.message);
+        return;
+      }
+      setVerified(true);
+      setNotice(payload.message);
     } catch {
       setMessage("Não foi possível conectar ao servidor. Tente novamente.");
     } finally {
@@ -103,34 +195,104 @@ function LoginPage() {
         >
           <div className="w-full max-w-[22rem]">
             <h2 id="login-heading" className="text-xl font-semibold tracking-tight md:text-2xl">
-              {mode === "login" ? "Acesse o painel" : "Solicite seu acesso"}
+              {verificationToken
+                ? verified
+                  ? "E-mail confirmado"
+                  : "Confirme seu e-mail"
+                : mode === "login"
+                  ? "Acesse o painel"
+                  : "Solicite seu acesso"}
             </h2>
             {mode === "register" && !registered && (
               <p className="mt-2 text-sm leading-5 text-muted-foreground">
-                Seu cadastro será analisado pelo administrador.
+                Confirme seu e-mail após o cadastro e aguarde a aprovação do administrador.
               </p>
             )}
 
-            {registered ? (
+            {verificationToken ? (
+              <div className="mt-6 space-y-4">
+                <p className="text-sm leading-6 text-muted-foreground" role="status">
+                  {verified
+                    ? notice
+                    : "Clique abaixo para confirmar que este e-mail pertence a você. O link é válido por 1 hora."}
+                </p>
+                {message && (
+                  <p role="alert" className="text-sm leading-5 text-destructive">
+                    {message}
+                  </p>
+                )}
+                {!verified && (
+                  <Button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => void confirmEmail()}
+                    className="h-11 w-full md:h-11"
+                  >
+                    {submitting && <LoaderCircle aria-hidden className="size-4 animate-spin" />}
+                    Confirmar meu e-mail
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={submitting}
+                  className="h-11 w-full md:h-11"
+                  onClick={() => {
+                    setVerificationToken(null);
+                    setMessage("");
+                    setNotice("");
+                  }}
+                >
+                  Voltar para o login
+                </Button>
+              </div>
+            ) : registered ? (
               <div className="mt-7">
                 <div
                   className="rounded-md border border-success/25 bg-success/10 p-4"
                   role="status"
                 >
                   <p className="flex items-center gap-2 text-sm font-semibold text-success">
-                    <CheckCircle2 aria-hidden className="size-4 shrink-0" /> Solicitação enviada
+                    {emailSent ? (
+                      <Mail aria-hidden className="size-4 shrink-0" />
+                    ) : (
+                      <CheckCircle2 aria-hidden className="size-4 shrink-0" />
+                    )}
+                    {emailSent ? "Confira seu e-mail" : "Cadastro salvo"}
                   </p>
-                  <p className="mt-1 text-sm leading-5 text-foreground">{message}</p>
+                  <p className="mt-1 text-sm leading-5 text-foreground">
+                    {notice ||
+                      (emailSent
+                        ? "Abra o link enviado para confirmar seu endereço. Confira também a pasta de spam. O acesso depende da aprovação do administrador."
+                        : "O envio falhou. Você pode solicitar um novo link abaixo.")}
+                  </p>
                 </div>
+                {message && (
+                  <p role="alert" className="mt-3 text-sm leading-5 text-destructive">
+                    {message}
+                  </p>
+                )}
                 <Button
                   type="button"
                   variant="outline"
+                  disabled={submitting}
+                  className="mt-4 h-11 w-full md:h-11"
+                  onClick={() => void resendVerification()}
+                >
+                  {submitting && <LoaderCircle aria-hidden className="size-4 animate-spin" />}
+                  Reenviar link de confirmação
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={submitting}
                   className="mt-5 h-11 w-full"
                   onClick={() => {
                     setMode("login");
                     setRegistered(false);
                     setMessage("");
                     setPassword("");
+                    setNotice("");
                   }}
                 >
                   Voltar para o login
@@ -203,6 +365,22 @@ function LoginPage() {
                     {message}
                   </p>
                 )}
+                {notice && (
+                  <p role="status" className="text-sm leading-5 text-muted-foreground">
+                    {notice}
+                  </p>
+                )}
+                {verificationNeeded && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={submitting}
+                    className="h-11 w-full whitespace-normal md:h-11"
+                    onClick={() => void resendVerification()}
+                  >
+                    Reenviar link de confirmação
+                  </Button>
+                )}
 
                 <Button
                   type="submit"
@@ -225,12 +403,15 @@ function LoginPage() {
               </form>
             )}
 
-            {!registered && (
+            {!registered && !verificationToken && (
               <button
                 type="button"
+                disabled={submitting}
                 onClick={() => {
                   setMode((current) => (current === "login" ? "register" : "login"));
                   setMessage("");
+                  setNotice("");
+                  setVerificationNeeded(false);
                 }}
                 className="mt-3 min-h-11 rounded-md text-left text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-card focus-visible:outline-none"
               >

@@ -30,7 +30,9 @@ import { Route as ApiDataUploadRouteImport } from './routes/api.data.upload'
 import { Route as ApiDataResultadosRouteImport } from './routes/api.data.resultados'
 import { Route as ApiDataMapaRouteImport } from './routes/api.data.mapa'
 import { Route as ApiCertificacaoPreviaRouteImport } from './routes/api.certificacao.previa'
+import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api.auth.verify-email'
 import { Route as ApiAuthSessionRouteImport } from './routes/api.auth.session'
+import { Route as ApiAuthResendVerificationRouteImport } from './routes/api.auth.resend-verification'
 import { Route as ApiAuthRegisterRouteImport } from './routes/api.auth.register'
 import { Route as ApiAuthLogoutRouteImport } from './routes/api.auth.logout'
 import { Route as ApiAuthLoginRouteImport } from './routes/api.auth.login'
@@ -141,11 +143,22 @@ const ApiCertificacaoPreviaRoute = ApiCertificacaoPreviaRouteImport.update({
   path: '/api/certificacao/previa',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthVerifyEmailRoute = ApiAuthVerifyEmailRouteImport.update({
+  id: '/api/auth/verify-email',
+  path: '/api/auth/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSessionRoute = ApiAuthSessionRouteImport.update({
   id: '/api/auth/session',
   path: '/api/auth/session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthResendVerificationRoute =
+  ApiAuthResendVerificationRouteImport.update({
+    id: '/api/auth/resend-verification',
+    path: '/api/auth/resend-verification',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAuthRegisterRoute = ApiAuthRegisterRouteImport.update({
   id: '/api/auth/register',
   path: '/api/auth/register',
@@ -189,7 +202,9 @@ export interface FileRoutesByFullPath {
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/session': typeof ApiAuthSessionRoute
+  '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/certificacao/previa': typeof ApiCertificacaoPreviaRoute
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
@@ -217,7 +232,9 @@ export interface FileRoutesByTo {
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/session': typeof ApiAuthSessionRoute
+  '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/certificacao/previa': typeof ApiCertificacaoPreviaRoute
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
@@ -246,7 +263,9 @@ export interface FileRoutesById {
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
   '/api/auth/session': typeof ApiAuthSessionRoute
+  '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/certificacao/previa': typeof ApiCertificacaoPreviaRoute
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
@@ -276,7 +295,9 @@ export interface FileRouteTypes {
     | '/api/auth/login'
     | '/api/auth/logout'
     | '/api/auth/register'
+    | '/api/auth/resend-verification'
     | '/api/auth/session'
+    | '/api/auth/verify-email'
     | '/api/certificacao/previa'
     | '/api/data/mapa'
     | '/api/data/resultados'
@@ -304,7 +325,9 @@ export interface FileRouteTypes {
     | '/api/auth/login'
     | '/api/auth/logout'
     | '/api/auth/register'
+    | '/api/auth/resend-verification'
     | '/api/auth/session'
+    | '/api/auth/verify-email'
     | '/api/certificacao/previa'
     | '/api/data/mapa'
     | '/api/data/resultados'
@@ -332,7 +355,9 @@ export interface FileRouteTypes {
     | '/api/auth/login'
     | '/api/auth/logout'
     | '/api/auth/register'
+    | '/api/auth/resend-verification'
     | '/api/auth/session'
+    | '/api/auth/verify-email'
     | '/api/certificacao/previa'
     | '/api/data/mapa'
     | '/api/data/resultados'
@@ -361,7 +386,9 @@ export interface RootRouteChildren {
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
   ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
   ApiAuthRegisterRoute: typeof ApiAuthRegisterRoute
+  ApiAuthResendVerificationRoute: typeof ApiAuthResendVerificationRoute
   ApiAuthSessionRoute: typeof ApiAuthSessionRoute
+  ApiAuthVerifyEmailRoute: typeof ApiAuthVerifyEmailRoute
   ApiCertificacaoPreviaRoute: typeof ApiCertificacaoPreviaRoute
   ApiDataMapaRoute: typeof ApiDataMapaRoute
   ApiDataResultadosRoute: typeof ApiDataResultadosRoute
@@ -517,11 +544,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCertificacaoPreviaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/verify-email': {
+      id: '/api/auth/verify-email'
+      path: '/api/auth/verify-email'
+      fullPath: '/api/auth/verify-email'
+      preLoaderRoute: typeof ApiAuthVerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/session': {
       id: '/api/auth/session'
       path: '/api/auth/session'
       fullPath: '/api/auth/session'
       preLoaderRoute: typeof ApiAuthSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/resend-verification': {
+      id: '/api/auth/resend-verification'
+      path: '/api/auth/resend-verification'
+      fullPath: '/api/auth/resend-verification'
+      preLoaderRoute: typeof ApiAuthResendVerificationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/register': {
@@ -577,7 +618,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthLoginRoute: ApiAuthLoginRoute,
   ApiAuthLogoutRoute: ApiAuthLogoutRoute,
   ApiAuthRegisterRoute: ApiAuthRegisterRoute,
+  ApiAuthResendVerificationRoute: ApiAuthResendVerificationRoute,
   ApiAuthSessionRoute: ApiAuthSessionRoute,
+  ApiAuthVerifyEmailRoute: ApiAuthVerifyEmailRoute,
   ApiCertificacaoPreviaRoute: ApiCertificacaoPreviaRoute,
   ApiDataMapaRoute: ApiDataMapaRoute,
   ApiDataResultadosRoute: ApiDataResultadosRoute,

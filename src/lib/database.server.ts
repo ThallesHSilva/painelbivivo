@@ -52,6 +52,7 @@ export type StoredUser = {
   createdAt: string;
   reviewedAt: string | null;
   lastLoginAt: string | null;
+  emailVerifiedAt: string | null;
 };
 
 type UserRow = {
@@ -64,6 +65,7 @@ type UserRow = {
   created_at: string;
   reviewed_at: string | null;
   last_login_at: string | null;
+  email_verified_at: string | null;
 };
 
 let database: DatabaseSync | undefined;
@@ -132,6 +134,20 @@ function getDatabase() {
     if (!columns.some((column) => column.name === "role")) {
       db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'gn'");
     }
+    if (!columns.some((column) => column.name === "email_verified_at")) {
+      db.exec("ALTER TABLE users ADD COLUMN email_verified_at TEXT");
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS email_verifications (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at INTEGER NOT NULL,
+        sent_at INTEGER NOT NULL,
+        window_started_at INTEGER NOT NULL,
+        send_count INTEGER NOT NULL DEFAULT 1
+      )
+    `);
     // Previously restricted accounts need approval before accessing the consolidated panel.
     db.exec(`
       UPDATE users
@@ -161,6 +177,7 @@ function mapUser(row: UserRow): StoredUser {
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at,
     lastLoginAt: row.last_login_at,
+    emailVerifiedAt: row.email_verified_at,
   };
 }
 
@@ -210,11 +227,19 @@ export function updateUserDetails(
 ) {
   try {
     const result = getDatabase()
-      .prepare("UPDATE users SET name = ?, email = ?, partner_name = ? WHERE id = ?")
-      .run(details.name, details.email, details.partnerName, id);
+      .prepare(
+        `UPDATE users SET name = ?, partner_name = ?,
+        email_verified_at = CASE WHEN email = ? COLLATE NOCASE THEN email_verified_at ELSE NULL END,
+        email = ? WHERE id = ?`,
+      )
+      .run(details.name, details.partnerName, details.email, details.email, id);
     return result.changes > 0 ? "updated" : "not-found";
   } catch (error) {
-    if (error instanceof Error && "errcode" in error && error.errcode === SQLITE_CONSTRAINT_UNIQUE) {
+    if (
+      error instanceof Error &&
+      "errcode" in error &&
+      error.errcode === SQLITE_CONSTRAINT_UNIQUE
+    ) {
       return "exists";
     }
     throw error;
@@ -229,6 +254,77 @@ export function registerUserLogin(id: number) {
   getDatabase()
     .prepare("UPDATE users SET last_login_at = ? WHERE id = ?")
     .run(new Date().toISOString(), id);
+}
+
+const VERIFICATION_COOLDOWN_MS = 60_000;
+const VERIFICATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function reserveEmailVerification(user: StoredUser, tokenHash: string, now: number) {
+  const result = getDatabase()
+    .prepare(
+      `
+      INSERT INTO email_verifications
+        (user_id, email, token_hash, expires_at, sent_at, window_started_at, send_count)
+      SELECT id, email, ?, ?, ?, ?, 1 FROM users
+      WHERE id = ? AND email = ? COLLATE NOCASE AND email_verified_at IS NULL
+      ON CONFLICT(user_id) DO UPDATE SET
+        email = excluded.email, token_hash = excluded.token_hash,
+        expires_at = excluded.expires_at, sent_at = excluded.sent_at,
+        window_started_at = CASE WHEN email_verifications.window_started_at <= ?
+          THEN excluded.window_started_at ELSE email_verifications.window_started_at END,
+        send_count = CASE WHEN email_verifications.window_started_at <= ?
+          THEN 1 ELSE email_verifications.send_count + 1 END
+      WHERE email_verifications.sent_at <= ?
+        AND (email_verifications.window_started_at <= ? OR email_verifications.send_count < 10)
+    `,
+    )
+    .run(
+      tokenHash,
+      now + 60 * 60 * 1000,
+      now,
+      now,
+      user.id,
+      user.email,
+      now - VERIFICATION_WINDOW_MS,
+      now - VERIFICATION_WINDOW_MS,
+      now - VERIFICATION_COOLDOWN_MS,
+      now - VERIFICATION_WINDOW_MS,
+    );
+  return result.changes > 0;
+}
+
+export function expireEmailVerification(tokenHash: string) {
+  // Keep send counters after delivery failures so repeated failures cannot bypass limits.
+  getDatabase()
+    .prepare("UPDATE email_verifications SET expires_at = 0 WHERE token_hash = ?")
+    .run(tokenHash);
+}
+
+export function confirmEmailVerification(tokenHash: string, now: number) {
+  const db = getDatabase();
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const result = db
+      .prepare(
+        `
+      UPDATE users SET email_verified_at = ?
+      WHERE email_verified_at IS NULL AND EXISTS (
+        SELECT 1 FROM email_verifications v
+        WHERE v.user_id = users.id AND v.email = users.email COLLATE NOCASE
+          AND v.token_hash = ? AND v.expires_at > ?
+      )
+    `,
+      )
+      .run(new Date(now).toISOString(), tokenHash, now);
+    if (result.changes > 0) {
+      db.prepare("DELETE FROM email_verifications WHERE token_hash = ?").run(tokenHash);
+    }
+    db.exec("COMMIT");
+    return result.changes > 0;
+  } catch (error) {
+    if (db.isTransaction) db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function saveDataSnapshot(input: {

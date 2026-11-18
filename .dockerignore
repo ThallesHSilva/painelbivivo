@@ -8,3 +8,5 @@ graphify-out
 .codex
 *.log
 .env
+.env.*
+.tmp-validation

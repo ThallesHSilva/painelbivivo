@@ -62,6 +62,7 @@ type ManagedUser = {
   partnerName: string;
   status: "pending" | "approved" | "rejected";
   lastLoginAt: string | null;
+  emailVerifiedAt: string | null;
 };
 const statusInfo = {
   pending: { label: "Pendente", className: "border-amber-500/20 bg-amber-500/10 text-amber-700" },
@@ -78,10 +79,14 @@ async function mutateUsers(method: "POST" | "PUT" | "PATCH" | "DELETE", body: ob
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const payload = (await response.json().catch(() => null)) as {
+    message?: string;
+    emailSent?: boolean;
+  } | null;
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(payload?.message ?? "Não foi possível concluir a alteração.");
   }
+  return payload;
 }
 
 function formatDate(value: string | null) {
@@ -210,7 +215,11 @@ function UsersPage() {
       if (user) {
         await mutateUsers("PUT", { id: user.id, ...details });
       } else {
-        await mutateUsers("POST", { ...details, password: values.get("password") });
+        const result = await mutateUsers("POST", { ...details, password: values.get("password") });
+        if (result?.emailSent === false)
+          toast.warning(
+            "Cadastro salvo. O envio do e-mail falhou. O usuário poderá reenviar o link no login.",
+          );
       }
       setEditor(null);
       toast.success(user ? "Cadastro atualizado." : "Usuário cadastrado. Aguardando aprovação.");
@@ -372,6 +381,11 @@ function UsersPage() {
                         <TableCell className="max-w-[14rem] whitespace-normal [overflow-wrap:anywhere]">
                           <p className="font-semibold">{user.name}</p>
                           <p className="text-xs text-muted-foreground">{user.email}</p>
+                          <p
+                            className={`mt-1 text-xs ${user.emailVerifiedAt ? "text-success" : "text-warning"}`}
+                          >
+                            {user.emailVerifiedAt ? "E-mail confirmado" : "E-mail não confirmado"}
+                          </p>
                           {(user.partnerName || user.lastLoginAt) && (
                             <div className="mt-1 space-y-0.5 text-xs text-muted-foreground md:hidden">
                               {user.partnerName && <p>{user.partnerName}</p>}

@@ -13,6 +13,8 @@ const PUBLIC_PATHS = new Set([
   "/api/auth/register",
   "/api/auth/logout",
   "/api/auth/session",
+  "/api/auth/verify-email",
+  "/api/auth/resend-verification",
   "/robots.txt",
   "/sitemap.xml",
   "/favicon.ico",

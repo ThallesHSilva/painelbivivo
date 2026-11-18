@@ -35,6 +35,23 @@ docker compose ps
 docker compose logs -f mapa-parque
 ```
 
+## Confirmação de e-mail pelo Gmail
+
+Configure `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER`, `SMTP_PASSWORD` e
+`MAIL_FROM="Painel executivo <seu-email@gmail.com>"`. Use uma senha de app do Google em
+`SMTP_PASSWORD`. A conta Google precisa ter verificação em duas etapas habilitada para
+gerar essa senha. Defina `APP_ORIGIN` com a URL HTTPS pública do painel.
+
+Em uma implantação pelo Coolify, cadastre essas variáveis em **Environment Variables**,
+disponíveis no contêiner de produção. O arquivo `.env` local é ignorado pelo Git e pela
+imagem Docker. Na implantação por Docker Compose, o arquivo `.env` é lido pelo serviço.
+
+Após o cadastro, o usuário recebe um link válido por 1 hora. O login exige confirmação do
+e-mail e aprovação do administrador. Contas existentes também precisam confirmar seu
+endereço no próximo login. O administrador pode acompanhar essa confirmação em **Acessos**.
+Alterar o e-mail de uma conta exige uma nova confirmação. O reenvio está disponível no login,
+com intervalo de 1 minuto e limite de 10 mensagens por conta a cada 24 horas.
+
 ## Atualização da aplicação
 
 ```bash

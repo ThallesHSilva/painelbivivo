@@ -8,6 +8,7 @@ import {
   validUserPassword,
 } from "@/lib/auth.server";
 import { deleteUser, updateUserDetails, updateUserStatus } from "@/lib/database.server";
+import { EmailConfigurationError } from "@/lib/email.server";
 
 const noStore = { "Cache-Control": "no-store" };
 
@@ -67,9 +68,17 @@ export const Route = createFileRoute("/api/admin/users")({
             400,
           );
         }
-        const result = await register({ ...details, password });
-        if (!result.ok) return errorResponse("Este e-mail já está em uso.", 409);
-        return Response.json({ id: result.id }, { status: 201, headers: noStore });
+        try {
+          const result = await register({ ...details, password });
+          if (!result.ok) return errorResponse("Este e-mail já está em uso.", 409);
+          return Response.json(
+            { id: result.id, emailSent: result.emailSent },
+            { status: 201, headers: noStore },
+          );
+        } catch (error) {
+          if (error instanceof EmailConfigurationError) return errorResponse(error.message, 503);
+          throw error;
+        }
       },
       PUT: async ({ request }) => {
         const body = await readMutation(request);
