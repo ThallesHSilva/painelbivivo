@@ -569,6 +569,7 @@ export const Route = createFileRoute("/api/data/upload")({
             );
             const metadata = JSON.parse(metadataOutput) as {
               domain: "carteira" | "fixa" | "movel";
+              scope: "partner" | "operation";
               partnerName: string;
               sourceCompetence: string;
               qscType: string;
@@ -590,14 +591,16 @@ export const Route = createFileRoute("/api/data/upload")({
                 `O arquivo informa ${metadata.qscType}, mas foi enviado como ${kind}.`,
               );
             }
-            const sourcePartner = await canonicalQscPartner(
-              metadata.partnerName,
-              snapshotDirectory,
-            );
+            const sourcePartner =
+              metadata.scope === "operation"
+                ? { id: "__operation__", name: "Operação" }
+                : await canonicalQscPartner(metadata.partnerName, snapshotDirectory);
             const storagePartnerId =
-              partnerSlug(sourcePartner.id) ||
-              partnerSlug(sourcePartner.name) ||
-              "parceiro-nao-informado";
+              metadata.scope === "operation"
+                ? "__operation__"
+                : partnerSlug(sourcePartner.id) ||
+                  partnerSlug(sourcePartner.name) ||
+                  "parceiro-nao-informado";
             const partnerDirectory = path.join(qscDirectory, "partners", storagePartnerId);
             await mkdir(partnerDirectory, { recursive: true });
             const finalPath = path.join(

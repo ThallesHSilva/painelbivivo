@@ -31,8 +31,13 @@ const qscPercentFormatter = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 2,
 });
 
-export const fmtQscPct = (n: number | undefined | null) =>
-  unavailable(n) ? "—" : qscPercentFormatter.format(Math.trunc(n * 10_000) / 10_000);
+export function fmtQscPct(n: number | undefined | null) {
+  if (unavailable(n)) return "—";
+  const scaled = n * 10_000;
+  // Avoid losing a reported decimal when binary arithmetic puts an integer just below itself.
+  const tolerance = Number.EPSILON * Math.max(1, Math.abs(scaled));
+  return qscPercentFormatter.format(Math.trunc(scaled + Math.sign(scaled) * tolerance) / 10_000);
+}
 
 export function fmtCompact(n: number | undefined | null): string {
   if (unavailable(n)) return "—";

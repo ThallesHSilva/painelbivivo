@@ -6,6 +6,8 @@ import { QSC_METRIC_DEFINITIONS, scoreMetric } from "./qsc-metrics.mjs";
 const definitionsById = new Map(
   QSC_METRIC_DEFINITIONS.map((definition) => [definition.id, definition]),
 );
+export const QSC_OPERATION_ID = "__operation__";
+const OPERATION_NAME = "Operação";
 
 const RESULT_IDS = {
   carteira: new Map([
@@ -97,7 +99,7 @@ function domainForType(value) {
 
 function competenceFor(value) {
   const source = text(value);
-  if (!/^\d{6}$/.test(source)) throw new Error(`anomestxt inválido: ${source}.`);
+  if (!/^\d{4}(0[1-9]|1[0-2])$/.test(source)) throw new Error(`anomestxt inválido: ${source}.`);
   return `${source.slice(0, 4)}-${source.slice(4)}`;
 }
 
@@ -118,10 +120,12 @@ function columnIndex(headers, matcher) {
 export function parseQscSummaryRows(rows, sourceName = "") {
   const filters = filterBlock(rows);
   const qscType = filterValue(filters, "TIPO_QSC");
-  const partnerName = filterValue(filters, "GRUPO_REDE_TERMO");
+  const sourcePartnerName = filterValue(filters, "GRUPO_REDE_TERMO");
+  const scope = sourcePartnerName ? "partner" : "operation";
+  const partnerName = sourcePartnerName || OPERATION_NAME;
   const sourceCompetence = filterValue(filters, "anomestxt");
-  if (!qscType || !partnerName || !sourceCompetence) {
-    throw new Error("A base QSC precisa informar TIPO_QSC, GRUPO_REDE_TERMO e anomestxt.");
+  if (!qscType || !sourceCompetence) {
+    throw new Error("A base QSC precisa informar TIPO_QSC e anomestxt.");
   }
 
   const domain = domainForType(qscType);
@@ -184,6 +188,7 @@ export function parseQscSummaryRows(rows, sourceName = "") {
   return {
     sourceName: path.basename(sourceName),
     qscType,
+    scope,
     domain,
     partnerName,
     sourceCompetence,
@@ -272,13 +277,11 @@ export function aggregateRecords(records) {
       ...record,
       kpi1: 0,
       kpi2: 0,
-      note: 0,
       recordCount: 0,
     };
     current.kpi1 += record.kpi1;
     current.kpi2 += record.kpi2;
     current.recordCount += 1;
-    if (record.note !== null) current.note += record.note;
     current.band = current.recordCount === 1 ? record.band : null;
     current.sourcePercent = current.recordCount === 1 ? record.percent : null;
     current.percent = current.kpi2 > 0 ? current.kpi1 / current.kpi2 : null;
@@ -302,18 +305,39 @@ export function aggregateRecords(records) {
 
 export async function buildQscSummarySnapshot(filePaths) {
   const parsed = await Promise.all(filePaths.map(readQscSummary));
+  // An operation summary already covers its entire domain/month. Keep older months
+  // and other domains, but never add the old partner files to that same total.
+  const periodKey = (file) => `${file.domain}\u001f${file.competence}`;
+  const operationPeriods = new Set(
+    parsed.filter((file) => file.scope === "operation").map(periodKey),
+  );
+  const selectedFiles = parsed.filter(
+    (file) => file.scope === "operation" || !operationPeriods.has(periodKey(file)),
+  );
   const canonicalPartners = await readCanonicalPartners();
   const partners = new Map();
   const records = [];
   const source = [];
+  const seen = new Set();
 
-  for (const file of parsed) {
-    const partner = resolvePartner(file.partnerName, canonicalPartners);
+  for (const file of selectedFiles) {
+    const partner =
+      file.scope === "operation"
+        ? { id: QSC_OPERATION_ID, name: OPERATION_NAME }
+        : resolvePartner(file.partnerName, canonicalPartners);
+    const key = `${periodKey(file)}\u001f${partner.id}`;
+    if (seen.has(key)) {
+      throw new Error(
+        `Mais de uma base QSC de ${file.qscType} para ${partner.name} em ${file.competence}.`,
+      );
+    }
+    seen.add(key);
     partners.set(partner.id, partner);
     source.push({
       fileName: file.sourceName,
       domain: file.domain,
       qscType: file.qscType,
+      scope: file.scope,
       partner: partner.name,
       competence: file.competence,
       filters: file.filters.join("\n"),
