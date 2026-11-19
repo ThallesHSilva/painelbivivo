@@ -13,12 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AuthRole } from "@/lib/auth.server";
+import { PasswordRecoveryForm } from "@/components/PasswordRecoveryForm";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       { title: "Entrar — Painel executivo" },
       { name: "robots", content: "noindex, nofollow" },
+      { name: "referrer", content: "no-referrer" },
     ],
   }),
   component: LoginPage,
@@ -46,12 +48,19 @@ function LoginPage() {
   const [verified, setVerified] = useState(false);
   const [verificationNeeded, setVerificationNeeded] = useState(false);
   const [notice, setNotice] = useState("");
+  const [recovering, setRecovering] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
 
   useEffect(() => {
     function readVerificationLink() {
-      const token = new URLSearchParams(window.location.hash.slice(1)).get("verify");
-      if (!token) return false;
-      setVerificationToken(token);
+      const params = new URLSearchParams(window.location.hash.slice(1));
+      const token = params.get("verify");
+      const reset = params.get("reset");
+      if (!token && !reset) return false;
+      setVerificationToken(reset ? null : token);
+      setResetToken(reset);
+      setRecovering(Boolean(reset));
+      setPassword("");
       setVerified(false);
       setRegistered(false);
       setMode("login");
@@ -195,21 +204,41 @@ function LoginPage() {
         >
           <div className="w-full max-w-[22rem]">
             <h2 id="login-heading" className="text-xl font-semibold tracking-tight md:text-2xl">
-              {verificationToken
-                ? verified
-                  ? "E-mail confirmado"
-                  : "Confirme seu e-mail"
-                : mode === "login"
-                  ? "Acesse o painel"
-                  : "Solicite seu acesso"}
+              {recovering
+                ? resetToken
+                  ? "Redefina sua senha"
+                  : "Recupere seu acesso"
+                : verificationToken
+                  ? verified
+                    ? "E-mail confirmado"
+                    : "Confirme seu e-mail"
+                  : mode === "login"
+                    ? "Acesse o painel"
+                    : "Solicite seu acesso"}
             </h2>
-            {mode === "register" && !registered && (
+            {!recovering && mode === "register" && !registered && (
               <p className="mt-2 text-sm leading-5 text-muted-foreground">
                 Confirme seu e-mail após o cadastro e aguarde a aprovação do administrador.
               </p>
             )}
 
-            {verificationToken ? (
+            {recovering ? (
+              <PasswordRecoveryForm
+                key={resetToken ?? "request"}
+                token={resetToken}
+                initialEmail={email}
+                onBack={() => {
+                  setRecovering(false);
+                  setResetToken(null);
+                  setMode("login");
+                  setMessage("");
+                  setNotice("");
+                  setPassword("");
+                  setVerificationNeeded(false);
+                }}
+                onRequestNew={() => setResetToken(null)}
+              />
+            ) : verificationToken ? (
               <div className="mt-6 space-y-4">
                 <p className="text-sm leading-6 text-muted-foreground" role="status">
                   {verified
@@ -333,7 +362,22 @@ function LoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">Senha</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label htmlFor="password">Senha</Label>
+                    {mode === "login" && (
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => {
+                          setRecovering(true);
+                          setPassword("");
+                        }}
+                        className="min-h-11 rounded-md text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
+                        Esqueci minha senha
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <Input
                       id="password"
@@ -403,7 +447,7 @@ function LoginPage() {
               </form>
             )}
 
-            {!registered && !verificationToken && (
+            {!recovering && !registered && !verificationToken && (
               <button
                 type="button"
                 disabled={submitting}

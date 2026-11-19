@@ -22,6 +22,7 @@ type AuthSessionData = {
   authenticated: boolean;
   user: AuthUser;
   expiresAt: number;
+  passwordVersion?: number;
 };
 
 export type LoginResult =
@@ -249,11 +250,12 @@ async function adminCredentials() {
   return { email: DEVELOPMENT_EMAIL, passwordHash: await hashPassword(DEVELOPMENT_PASSWORD) };
 }
 
-async function writeSession(user: AuthUser) {
+async function writeSession(user: AuthUser, passwordVersion = 0) {
   await updateSession<AuthSessionData>(sessionConfig(), {
     authenticated: true,
     user,
     expiresAt: Date.now() + SESSION_MAX_AGE_SECONDS * 1000,
+    passwordVersion,
   });
 }
 
@@ -291,7 +293,7 @@ export async function login(email: string, password: string): Promise<LoginResul
     partnerName: storedUser.partnerName,
   };
   registerUserLogin(storedUser.id);
-  await writeSession(user);
+  await writeSession(user, storedUser.passwordVersion);
   return { ok: true, user };
 }
 
@@ -349,6 +351,7 @@ export async function readAuthUser(): Promise<AuthUser | null> {
     !storedUser ||
     !storedUser.emailVerifiedAt ||
     storedUser.status !== "approved" ||
+    storedUser.passwordVersion !== (session.data.passwordVersion ?? 0) ||
     storedUser.id !== sessionUser.id
   ) {
     await clearSession({ name: SESSION_NAME });

@@ -99,6 +99,31 @@ export async function sendVerificationEmail(email: string, token: string) {
     "O acesso ao painel também depende da aprovação do administrador.",
     "Se você não solicitou este cadastro, ignore esta mensagem.",
   ].join("\n");
+  await sendAccountEmail(email, "Confirme seu e-mail — Painel executivo", text);
+}
+
+export async function sendPasswordResetEmail(email: string, token: string) {
+  const link = new URL("/login", emailConfiguration().origin);
+  link.hash = `reset=${token}`;
+  await sendAccountEmail(
+    email,
+    "Redefina sua senha — Painel executivo",
+    [
+      "Redefina sua senha — Painel executivo",
+      "",
+      "Recebemos uma solicitação para redefinir a senha da sua conta.",
+      "Abra o link abaixo para escolher uma nova senha:",
+      link.toString(),
+      "",
+      "O link expira em 30 minutos e pode ser usado uma única vez.",
+      "Após a troca, entre novamente com sua nova senha. As sessões anteriores serão encerradas.",
+      "Se você não solicitou esta alteração, ignore esta mensagem. Sua senha continuará a mesma.",
+    ].join("\n"),
+  );
+}
+
+async function sendAccountEmail(email: string, subject: string, text: string) {
+  const configuration = emailConfiguration();
   let transport: ReturnType<typeof nodemailer.createTransport> | undefined;
   try {
     // The existing Workspace relay authorizes the VPS's public IPv4 address.
@@ -122,7 +147,7 @@ export async function sendVerificationEmail(email: string, token: string) {
     const result = await transport.sendMail({
       from: configuration.from,
       to: { address: email, name: "" },
-      subject: "Confirme seu e-mail — Painel executivo",
+      subject,
       text,
     });
     if (result.rejected.length > 0 || result.accepted.length === 0) throw new EmailDeliveryError();

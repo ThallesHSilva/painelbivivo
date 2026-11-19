@@ -33,10 +33,12 @@ import { Route as ApiDataMapaRouteImport } from './routes/api.data.mapa'
 import { Route as ApiCertificacaoPreviaRouteImport } from './routes/api.certificacao.previa'
 import { Route as ApiAuthVerifyEmailRouteImport } from './routes/api.auth.verify-email'
 import { Route as ApiAuthSessionRouteImport } from './routes/api.auth.session'
+import { Route as ApiAuthResetPasswordRouteImport } from './routes/api.auth.reset-password'
 import { Route as ApiAuthResendVerificationRouteImport } from './routes/api.auth.resend-verification'
 import { Route as ApiAuthRegisterRouteImport } from './routes/api.auth.register'
 import { Route as ApiAuthLogoutRouteImport } from './routes/api.auth.logout'
 import { Route as ApiAuthLoginRouteImport } from './routes/api.auth.login'
+import { Route as ApiAuthForgotPasswordRouteImport } from './routes/api.auth.forgot-password'
 import { Route as ApiAdminUsersRouteImport } from './routes/api.admin.users'
 
 const UsuariosRoute = UsuariosRouteImport.update({
@@ -159,6 +161,11 @@ const ApiAuthSessionRoute = ApiAuthSessionRouteImport.update({
   path: '/api/auth/session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthResetPasswordRoute = ApiAuthResetPasswordRouteImport.update({
+  id: '/api/auth/reset-password',
+  path: '/api/auth/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthResendVerificationRoute =
   ApiAuthResendVerificationRouteImport.update({
     id: '/api/auth/resend-verification',
@@ -178,6 +185,11 @@ const ApiAuthLogoutRoute = ApiAuthLogoutRouteImport.update({
 const ApiAuthLoginRoute = ApiAuthLoginRouteImport.update({
   id: '/api/auth/login',
   path: '/api/auth/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAuthForgotPasswordRoute = ApiAuthForgotPasswordRouteImport.update({
+  id: '/api/auth/forgot-password',
+  path: '/api/auth/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAdminUsersRoute = ApiAdminUsersRouteImport.update({
@@ -205,10 +217,12 @@ export interface FileRoutesByFullPath {
   '/api/qsc': typeof ApiQscRoute
   '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
+  '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/session': typeof ApiAuthSessionRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/certificacao/previa': typeof ApiCertificacaoPreviaRoute
@@ -236,10 +250,12 @@ export interface FileRoutesByTo {
   '/api/qsc': typeof ApiQscRoute
   '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
+  '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/session': typeof ApiAuthSessionRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/certificacao/previa': typeof ApiCertificacaoPreviaRoute
@@ -268,10 +284,12 @@ export interface FileRoutesById {
   '/api/qsc': typeof ApiQscRoute
   '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
+  '/api/auth/forgot-password': typeof ApiAuthForgotPasswordRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/register': typeof ApiAuthRegisterRoute
   '/api/auth/resend-verification': typeof ApiAuthResendVerificationRoute
+  '/api/auth/reset-password': typeof ApiAuthResetPasswordRoute
   '/api/auth/session': typeof ApiAuthSessionRoute
   '/api/auth/verify-email': typeof ApiAuthVerifyEmailRoute
   '/api/certificacao/previa': typeof ApiCertificacaoPreviaRoute
@@ -301,10 +319,12 @@ export interface FileRouteTypes {
     | '/api/qsc'
     | '/api/quartil'
     | '/api/admin/users'
+    | '/api/auth/forgot-password'
     | '/api/auth/login'
     | '/api/auth/logout'
     | '/api/auth/register'
     | '/api/auth/resend-verification'
+    | '/api/auth/reset-password'
     | '/api/auth/session'
     | '/api/auth/verify-email'
     | '/api/certificacao/previa'
@@ -332,10 +352,12 @@ export interface FileRouteTypes {
     | '/api/qsc'
     | '/api/quartil'
     | '/api/admin/users'
+    | '/api/auth/forgot-password'
     | '/api/auth/login'
     | '/api/auth/logout'
     | '/api/auth/register'
     | '/api/auth/resend-verification'
+    | '/api/auth/reset-password'
     | '/api/auth/session'
     | '/api/auth/verify-email'
     | '/api/certificacao/previa'
@@ -363,10 +385,12 @@ export interface FileRouteTypes {
     | '/api/qsc'
     | '/api/quartil'
     | '/api/admin/users'
+    | '/api/auth/forgot-password'
     | '/api/auth/login'
     | '/api/auth/logout'
     | '/api/auth/register'
     | '/api/auth/resend-verification'
+    | '/api/auth/reset-password'
     | '/api/auth/session'
     | '/api/auth/verify-email'
     | '/api/certificacao/previa'
@@ -395,10 +419,12 @@ export interface RootRouteChildren {
   ApiQscRoute: typeof ApiQscRoute
   ApiQuartilRoute: typeof ApiQuartilRouteWithChildren
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
+  ApiAuthForgotPasswordRoute: typeof ApiAuthForgotPasswordRoute
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
   ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
   ApiAuthRegisterRoute: typeof ApiAuthRegisterRoute
   ApiAuthResendVerificationRoute: typeof ApiAuthResendVerificationRoute
+  ApiAuthResetPasswordRoute: typeof ApiAuthResetPasswordRoute
   ApiAuthSessionRoute: typeof ApiAuthSessionRoute
   ApiAuthVerifyEmailRoute: typeof ApiAuthVerifyEmailRoute
   ApiCertificacaoPreviaRoute: typeof ApiCertificacaoPreviaRoute
@@ -577,6 +603,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/reset-password': {
+      id: '/api/auth/reset-password'
+      path: '/api/auth/reset-password'
+      fullPath: '/api/auth/reset-password'
+      preLoaderRoute: typeof ApiAuthResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/resend-verification': {
       id: '/api/auth/resend-verification'
       path: '/api/auth/resend-verification'
@@ -603,6 +636,13 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/login'
       fullPath: '/api/auth/login'
       preLoaderRoute: typeof ApiAuthLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/auth/forgot-password': {
+      id: '/api/auth/forgot-password'
+      path: '/api/auth/forgot-password'
+      fullPath: '/api/auth/forgot-password'
+      preLoaderRoute: typeof ApiAuthForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/admin/users': {
@@ -646,10 +686,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiQscRoute: ApiQscRoute,
   ApiQuartilRoute: ApiQuartilRouteWithChildren,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
+  ApiAuthForgotPasswordRoute: ApiAuthForgotPasswordRoute,
   ApiAuthLoginRoute: ApiAuthLoginRoute,
   ApiAuthLogoutRoute: ApiAuthLogoutRoute,
   ApiAuthRegisterRoute: ApiAuthRegisterRoute,
   ApiAuthResendVerificationRoute: ApiAuthResendVerificationRoute,
+  ApiAuthResetPasswordRoute: ApiAuthResetPasswordRoute,
   ApiAuthSessionRoute: ApiAuthSessionRoute,
   ApiAuthVerifyEmailRoute: ApiAuthVerifyEmailRoute,
   ApiCertificacaoPreviaRoute: ApiCertificacaoPreviaRoute,

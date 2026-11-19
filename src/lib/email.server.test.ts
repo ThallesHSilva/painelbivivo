@@ -8,6 +8,7 @@ import {
   EmailConfigurationError,
   EmailDeliveryError,
   sendVerificationEmail,
+  sendPasswordResetEmail,
 } from "./email.server.ts";
 
 test("mail configuration and delivery", async (t) => {
@@ -99,6 +100,12 @@ test("mail configuration and delivery", async (t) => {
     EmailDeliveryError,
   );
   assert.equal(closed, 4);
+  fails = false;
+  await sendPasswordResetEmail("recovery@example.com", "e".repeat(64));
+  assert.equal(messages.at(-1)?.to.address, "recovery@example.com");
+  assert.match(messages.at(-1)!.text, /https:\/\/painel.example.com\/login#reset=e{64}/);
+  assert.match(messages.at(-1)!.text, /30 minutos/);
+  assert.equal(closed, 5);
   process.env.APP_ORIGIN = "https://user:secret@panel.example.com";
   assert.throws(emailConfiguration, EmailConfigurationError);
   process.env.APP_ORIGIN = "https://panel.example.com";

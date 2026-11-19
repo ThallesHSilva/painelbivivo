@@ -54,6 +54,7 @@ export type StoredUser = {
   reviewedAt: string | null;
   lastLoginAt: string | null;
   emailVerifiedAt: string | null;
+  passwordVersion: number;
 };
 
 type UserRow = {
@@ -67,6 +68,7 @@ type UserRow = {
   reviewed_at: string | null;
   last_login_at: string | null;
   email_verified_at: string | null;
+  password_version: number;
 };
 
 let database: DatabaseSync | undefined;
@@ -138,6 +140,20 @@ function getDatabase() {
     if (!columns.some((column) => column.name === "email_verified_at")) {
       db.exec("ALTER TABLE users ADD COLUMN email_verified_at TEXT");
     }
+    if (!columns.some((column) => column.name === "password_version")) {
+      db.exec("ALTER TABLE users ADD COLUMN password_version INTEGER NOT NULL DEFAULT 0");
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS password_resets (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at INTEGER NOT NULL,
+        sent_at INTEGER NOT NULL,
+        window_started_at INTEGER NOT NULL,
+        send_count INTEGER NOT NULL DEFAULT 1
+      )
+    `);
     db.exec(`
       CREATE TABLE IF NOT EXISTS email_verifications (
         user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -179,6 +195,7 @@ function mapUser(row: UserRow): StoredUser {
     reviewedAt: row.reviewed_at,
     lastLoginAt: row.last_login_at,
     emailVerifiedAt: row.email_verified_at,
+    passwordVersion: row.password_version,
   };
 }
 
@@ -219,6 +236,9 @@ export function updateUserStatus(id: number, status: UserStatus) {
   const result = getDatabase()
     .prepare("UPDATE users SET status = ?, reviewed_at = ? WHERE id = ?")
     .run(status, new Date().toISOString(), id);
+  if (status === "rejected") {
+    getDatabase().prepare("UPDATE password_resets SET expires_at = 0 WHERE user_id = ?").run(id);
+  }
   return result.changes > 0;
 }
 
@@ -234,6 +254,7 @@ export function updateUserDetails(
         email = ? WHERE id = ?`,
       )
       .run(details.name, details.partnerName, details.email, details.email, id);
+    getDatabase().prepare("UPDATE password_resets SET expires_at = 0 WHERE user_id = ?").run(id);
     return result.changes > 0 ? "updated" : "not-found";
   } catch (error) {
     if (
@@ -299,6 +320,75 @@ export function expireEmailVerification(tokenHash: string) {
   getDatabase()
     .prepare("UPDATE email_verifications SET expires_at = 0 WHERE token_hash = ?")
     .run(tokenHash);
+}
+
+export function reservePasswordReset(user: StoredUser, tokenHash: string, now: number) {
+  return (
+    getDatabase()
+      .prepare(
+        `
+    INSERT INTO password_resets
+      (user_id, email, token_hash, expires_at, sent_at, window_started_at, send_count)
+    SELECT id, email, ?, ?, ?, ?, 1 FROM users
+    WHERE id = ? AND email = ? COLLATE NOCASE AND status != 'rejected'
+    ON CONFLICT(user_id) DO UPDATE SET
+      email = excluded.email, token_hash = excluded.token_hash,
+      expires_at = excluded.expires_at, sent_at = excluded.sent_at,
+      window_started_at = CASE WHEN password_resets.window_started_at <= ?
+        THEN excluded.window_started_at ELSE password_resets.window_started_at END,
+      send_count = CASE WHEN password_resets.window_started_at <= ?
+        THEN 1 ELSE password_resets.send_count + 1 END
+    WHERE password_resets.sent_at <= ?
+      AND (password_resets.window_started_at <= ? OR password_resets.send_count < 5)
+  `,
+      )
+      .run(
+        tokenHash,
+        now + 30 * 60_000,
+        now,
+        now,
+        user.id,
+        user.email,
+        now - 3_600_000,
+        now - 3_600_000,
+        now - 60_000,
+        now - 3_600_000,
+      ).changes > 0
+  );
+}
+
+export function expirePasswordReset(tokenHash: string) {
+  getDatabase()
+    .prepare("UPDATE password_resets SET expires_at = 0 WHERE token_hash = ?")
+    .run(tokenHash);
+}
+
+export function completePasswordReset(tokenHash: string, passwordHash: string, now: number) {
+  const db = getDatabase();
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const result = db
+      .prepare(
+        `
+      UPDATE users SET password_hash = ?, password_version = password_version + 1
+      WHERE status != 'rejected' AND EXISTS (
+        SELECT 1 FROM password_resets r
+        WHERE r.user_id = users.id AND r.email = users.email COLLATE NOCASE
+          AND r.token_hash = ? AND r.expires_at > ?
+      )
+    `,
+      )
+      .run(passwordHash, tokenHash, now);
+    if (result.changes > 0) {
+      // Preserve delivery counters, but consume the link atomically with the password change.
+      db.prepare("UPDATE password_resets SET expires_at = 0 WHERE token_hash = ?").run(tokenHash);
+    }
+    db.exec("COMMIT");
+    return result.changes > 0;
+  } catch (error) {
+    if (db.isTransaction) db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function confirmEmailVerification(tokenHash: string, now: number) {
