@@ -39,7 +39,7 @@ const CLOUDFLARE_PUBLIC_ORIGIN = "https://mapaparque.consultaa7.com.br";
 export class AuthConfigurationError extends Error {
   constructor() {
     super(
-      "A autenticação não foi configurada. Defina AUTH_EMAIL, AUTH_PASSWORD_HASH e AUTH_SECRET no servidor.",
+      "A autenticação não foi configurada. Defina AUTH_EMAIL, AUTH_PASSWORD ou AUTH_PASSWORD_HASH, e AUTH_SECRET no servidor.",
     );
     this.name = "AuthConfigurationError";
   }
@@ -224,8 +224,9 @@ export async function verifyPassword(password: string, storedHash: string) {
 function configuredAdminCredentials() {
   const environment = runtimeEnvironment();
   const email = environment?.AUTH_EMAIL?.trim().toLocaleLowerCase("pt-BR");
+  const password = environment?.AUTH_PASSWORD;
   const passwordHash = environment?.AUTH_PASSWORD_HASH;
-  return email && passwordHash ? { email, passwordHash } : null;
+  return email && (password || passwordHash) ? { email, password, passwordHash } : null;
 }
 
 export function isAdministratorEmail(email: string) {
@@ -236,7 +237,14 @@ export function isAdministratorEmail(email: string) {
 
 async function adminCredentials() {
   const credentials = configuredAdminCredentials();
-  if (credentials) return credentials;
+  if (credentials) {
+    return {
+      email: credentials.email,
+      passwordHash: credentials.password
+        ? await hashPassword(credentials.password)
+        : credentials.passwordHash!,
+    };
+  }
   if (isProduction()) throw new AuthConfigurationError();
   return { email: DEVELOPMENT_EMAIL, passwordHash: await hashPassword(DEVELOPMENT_PASSWORD) };
 }

@@ -20,7 +20,9 @@ cd vista-park-now
 cp .env.example .env
 ```
 
-Edite `.env` e defina `AUTH_EMAIL`, `AUTH_PASSWORD_HASH`, `AUTH_SECRET` e `APP_ORIGIN`.
+Edite `.env` e defina `AUTH_EMAIL`, `AUTH_PASSWORD`, `AUTH_SECRET` e `APP_ORIGIN`.
+`AUTH_PASSWORD` contém a senha legível do administrador e tem prioridade quando preenchido.
+Para restaurar uma configuração com hash, use `AUTH_PASSWORD_HASH` e deixe `AUTH_PASSWORD` vazio.
 Gere uma chave de sessão com:
 
 ```bash
