@@ -8,7 +8,7 @@ function consultant(
   change6: number | null,
   q5Months: number,
 ): QuartilConsultant {
-  const months = ["2026-07", "2026-08", "2026-09"];
+  const months = ["2026-06", "2026-07", "2026-08", "2026-09"];
   const point = (month: string, quartile: number) => ({
     id,
     name: id,
@@ -16,16 +16,25 @@ function consultant(
     partnerName: "P",
     month,
     tenure: "experienced" as const,
-    values: { receita: 0, movel: 0, ftth: 0 },
-    quartiles: { receita: quartile, movel: quartile, ftth: quartile } as Record<
-      QuartilMetric,
-      number
-    >,
+    values: { receita: 0, movel: 0, ftth: 0, renovacoes: 0, receita_renovacoes: 0 },
+    quartiles: {
+      receita: quartile,
+      movel: quartile,
+      ftth: quartile,
+      renovacoes: quartile,
+      receita_renovacoes: quartile,
+    } as Record<QuartilMetric, number>,
   });
-  const history = months.map((month, index) => point(month, index >= 3 - q5Months ? 5 : 3));
-  const changes = (value: number | null) => ({ receita: value, movel: value, ftth: value });
+  const history = months.map((month, index) => point(month, index >= 4 - q5Months ? 5 : 3));
+  const changes = (value: number | null) => ({
+    receita: value,
+    movel: value,
+    ftth: value,
+    renovacoes: value,
+    receita_renovacoes: value,
+  });
   return {
-    ...history[2],
+    ...history[3],
     history,
     comparisons: {
       "3": { month: "2026-07", changes: changes(change3) },
@@ -40,7 +49,7 @@ test("evolution counts split up, down, stable and ignore missing history", () =>
     consultant("b", -1, 0, 0),
     consultant("c", 0, -2, 0),
     consultant("d", null, null, 0),
-    consultant("e", 1, null, 3),
+    consultant("e", 1, null, 4),
   ];
   assert.deepEqual(quartilEvolutionCounts(list, "receita", "3"), {
     up: 2,

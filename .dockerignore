@@ -10,3 +10,4 @@ graphify-out
 .env
 .env.*
 .tmp-validation
+.playwright-cli

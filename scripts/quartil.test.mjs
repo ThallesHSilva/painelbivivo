@@ -1,47 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { buildQuartilSnapshot, parseMonth } from "./quartil.mjs";
+import { parseQuartilSheets } from "./quartil-import.mjs";
+import { readSpreadsheetSheets } from "./spreadsheet-reader.mjs";
 import {
-  buildQuartilSnapshot,
-  quartil,
-  monthOffset,
-  parseMonth,
   QUARTIL_RULES,
-} from "./quartil.mjs";
-
-test("quartis independentes, limites inclusivos e zeros", () => {
-  assert.deepEqual(quartil({ receita: 2000, movel: 21, ftth: 15 }, "experienced"), {
-    receita: 1,
-    movel: 1,
-    ftth: 1,
-  });
-  assert.deepEqual(quartil({ receita: 499.99, movel: 20, ftth: 10 }, "experienced"), {
-    receita: 5,
-    movel: 2,
-    ftth: 2,
-  });
-  for (const [metric, bounds] of Object.entries({
-    receita: [2000, 1500, 1000, 500],
-    movel: [21, 16, 11, 6],
-    ftth: [15, 10, 6, 3],
-  })) {
-    bounds.forEach((value, index) => {
-      assert.equal(quartil({ [metric]: value }, "experienced")[metric], index + 1);
-      assert.equal(quartil({ [metric]: value - 0.01 }, "experienced")[metric], index + 2);
-    });
-  }
-  assert.deepEqual(quartil({ receita: 0, movel: 0, ftth: 0 }, "new"), {
-    receita: 5,
-    movel: 5,
-    ftth: 5,
-  });
-  assert.deepEqual(quartil({ receita: 1000, movel: 16, ftth: 10 }, "new"), {
-    receita: 1,
-    movel: 1,
-    ftth: 1,
-  });
-  assert.equal(quartil({ receita: null }, "new").receita, null);
-  assert.equal(quartil({ receita: 1000 }, null), null);
-});
+  QUARTIL_METRICS,
+  quartileFor,
+  consultantScore,
+  quartilAlert,
+  applyQuartilImport,
+  normalizeQuartilSnapshot,
+} from "./quartil-rules.ts";
+import { createWorkbook } from "../src/lib/xlsx-workbook.ts";
 const headers = [
   "Consultor",
   "Parceiro",
@@ -49,121 +23,217 @@ const headers = [
   "RECEITA TELECOM TT",
   "FISICOS MÓVEL",
   "FISICOS FTTH",
+  "RENOVAÇÕES",
+  "RECEITA RENOVAÇÕES",
 ];
-const row = (name, partner, amount) => [name, partner, "ACIMA DE M3", amount, 21, 15];
-test("coorte atual, parceiros separados, 3/6 meses, nomes normalizados e deduplicação", () => {
-  const data = buildQuartilSnapshot(
-    [
-      {
-        name: "Ago_26",
-        rows: [headers, row("Ana", "A7", 2000), row("Bia", "A7", 500), row("Ana", "Outro", 0)],
-      },
-      {
-        name: "Mai_26",
-        rows: [headers, row("ANA", "a7", 500), row("ANA", "a7", 500), row("Saiu", "A7", 2000)],
-      },
-      { name: "Jun_26", rows: [headers, row("ANA", "a7", 500)] },
-      { name: "Mar_26", rows: [headers, row("Ana", "A7", 1500)] },
-    ],
-    "modelo.xlsx",
-  );
-  assert.equal(data.consultants.length, 3);
-  assert.equal(data.partners.length, 2);
-  const ana = data.consultants.find((c) => c.name === "Ana" && c.partnerName === "A7");
-  assert.equal(ana.history.length, 4);
-  assert.equal(ana.comparisons[3].month, "2026-06");
-  assert.equal(ana.comparisons[6].month, "2026-03");
-  assert.equal(ana.comparisons[3].changes.receita, 3);
-  assert.equal(ana.comparisons[6].changes.receita, 1);
-  assert.equal(data.consultants.find((c) => c.name === "Bia").comparisons[3].changes.receita, null);
-  assert.ok(!data.consultants.some((c) => c.name === "Saiu"));
-  assert.throws(
-    () =>
-      buildQuartilSnapshot(
-        [{ name: "Ago_26", rows: [headers, row("Ana", "A7", 1), row("Ana", "A7", 2)] }],
-        "bad.xlsx",
+const row = (name = "Ana", partner = "A7", revenue = 500, tenure = "ACIMA DE M3") => [
+  name,
+  partner,
+  tenure,
+  revenue,
+  21,
+  11,
+  8,
+  369.927,
+];
+const sheet = (name, rows) => ({ name, rows: [headers, ...rows] });
+const empty = {
+  source: { report: "", importedAt: "" },
+  latestMonth: "",
+  months: [],
+  partners: [],
+  consultants: [],
+  warnings: [],
+};
+function ruleSheet(rules = QUARTIL_RULES) {
+  return {
+    name: "TABELA DE CONSULTORES",
+    rows: [
+      ["Tempo de casa", "Indicador", "Q1", "Q2", "Q3", "Q4", "Q5"],
+      ...["experienced", "new"].flatMap((tenure) =>
+        ["receita", "movel", "ftth"].map((metric) => [
+          rules[tenure].label,
+          metric,
+          ...rules[tenure].metrics[metric].map((r) => r.label),
+        ]),
       ),
-    /valores diferentes/,
-  );
-});
-test("duplicado com linha zerada mantém a preenchida, em qualquer ordem", () => {
-  const blank = ["Ana", "A7", "ACIMA DE M3", 0, 0, 0];
-  for (const rows of [
-    [row("Ana", "A7", 2000), blank],
-    [blank, row("Ana", "A7", 2000)],
-  ]) {
-    const data = buildQuartilSnapshot([{ name: "Ago_26", rows: [headers, ...rows] }], "m.xlsx");
-    assert.equal(data.consultants.length, 1);
-    assert.equal(data.consultants[0].values.receita, 2000);
-    assert.equal(data.consultants[0].quartiles.receita, 1);
-  }
-});
-test("parceiro sem o mês corrente continua com o último mês que enviou", () => {
-  const data = buildQuartilSnapshot(
-    [
-      { name: "Set_26", rows: [headers, row("Ana", "A7", 2000)] },
-      {
-        name: "Ago_26",
-        rows: [
-          headers,
-          row("Ana", "A7", 1500),
-          row("Caio", "Atrasado", 1000),
-          row("Dani", "Atrasado", 500),
-        ],
-      },
-      {
-        name: "Jul_26",
-        rows: [headers, row("Caio", "Atrasado", 500), row("Saiu", "Atrasado", 500)],
-      },
     ],
-    "modelo.xlsx",
+  };
+}
+test("faixas A7 e limites exatos de receita, móvel e FTTH", () => {
+  for (const [tenure, metric, amount, expected] of [
+    ["experienced", "receita", 2250, 2],
+    ["experienced", "receita", 2250.01, 1],
+    ["experienced", "receita", 1400, 3],
+    ["experienced", "receita", 800, 4],
+    ["experienced", "receita", 499.99, 5],
+    ["experienced", "movel", 25, 2],
+    ["experienced", "movel", 26, 1],
+    ["experienced", "ftth", 11, 1],
+    ["new", "receita", 100, 4],
+    ["new", "receita", 100.01, 3],
+    ["new", "receita", 250.5, 2],
+    ["new", "ftth", 1, 4],
+    ["new", "ftth", 2, 4],
+    ["new", "ftth", 6, 2],
+    ["new", "ftth", 10, 2],
+    ["new", "ftth", 11, 1],
+  ])
+    assert.equal(quartileFor(tenure, metric, amount), expected, tenure + metric + amount);
+  assert.equal(quartileFor(null, "receita", 100), null);
+  assert.equal(quartileFor("new", "receita", null), null);
+  assert.equal(quartileFor("new", "receita", -1), null);
+});
+test("cinco indicadores preservam dinheiro decimal e score máximo 25", () => {
+  const data = buildQuartilSnapshot([sheet("Set_26", [row()])], "base.xlsx");
+  const c = data.consultants[0];
+  assert.equal(c.values.receita_renovacoes, 369.927);
+  assert.equal(c.values.renovacoes, 8);
+  assert.equal(Object.keys(c.quartiles).length, 5);
+  assert.equal(
+    consultantScore({ ...c, quartiles: Object.fromEntries(QUARTIL_METRICS.map((m) => [m, 1])) }),
+    25,
   );
-  assert.equal(data.latestMonth, "2026-09");
-  assert.equal(data.partners.length, 2);
-  const caio = data.consultants.find((c) => c.name === "Caio");
-  const ana = data.consultants.find((c) => c.name === "Ana");
-  assert.equal(ana.month, "2026-09");
-  assert.equal(caio.month, "2026-08");
-  assert.equal(caio.history.length, 2);
-  // A janela parte do mês do próprio parceiro: Ago_26 contra Jun_26 (ausente) e Mar_26.
-  assert.equal(caio.comparisons[3].month, "2026-06");
-  assert.equal(caio.comparisons[6].month, "2026-03");
-  assert.equal(ana.comparisons[3].month, "2026-07");
-  // Quem saiu antes do último mês do parceiro continua fora.
-  assert.ok(!data.consultants.some((c) => c.name === "Saiu"));
-  assert.ok(data.consultants.some((c) => c.name === "Dani" && c.month === "2026-08"));
 });
-test("faixas exibidas na página espelham as regras do cálculo", async () => {
-  const { QUARTIL_BOUNDS, quartilRangeLabel } = await import("../src/lib/quartil.ts");
-  for (const tenure of ["experienced", "new"]) {
-    for (const metric of ["receita", "movel", "ftth"]) {
-      const shown = QUARTIL_BOUNDS[tenure][metric];
-      const real = QUARTIL_RULES[tenure][metric];
-      // Mesmo quartil para cada limite e para o valor logo abaixo dele.
-      shown.forEach((bound, index) => {
-        assert.equal(quartil({ [metric]: bound }, tenure)[metric], index + 1);
-        assert.equal(quartil({ [metric]: real[index] }, tenure)[metric], index + 1);
-      });
-      assert.equal(real.length, shown.length);
-    }
+test("colunas ausentes são null, zero permanece um resultado Q5", () => {
+  const data = buildQuartilSnapshot(
+    [{ name: "Set_26", rows: [headers.slice(0, 6), row().slice(0, 6)] }],
+    "old.xlsx",
+  );
+  const c = data.consultants[0];
+  assert.equal(c.values.renovacoes, null);
+  assert.equal(c.quartiles.renovacoes, null);
+  const zero = row();
+  zero[6] = 0;
+  assert.equal(
+    buildQuartilSnapshot([sheet("Set_26", [zero])], "base.xlsx").consultants[0].quartiles
+      .renovacoes,
+    5,
+  );
+});
+test("evolução usa 3 e 6 registros anteriores, inclusive com lacunas de calendário", () => {
+  const months = ["Jan_26", "Fev_26", "Mar_26", "Abr_26", "Mai_26", "Jun_26", "Set_26"];
+  const data = buildQuartilSnapshot(
+    months.map((m, i) => sheet(m, [row("Ana", "A7", i === 6 ? 3000 : 500)])),
+    "base.xlsx",
+  );
+  const c = data.consultants[0];
+  assert.equal(c.comparisons[3].month, "2026-04");
+  assert.equal(c.comparisons[6].month, "2026-01");
+  assert.equal(c.comparisons[3].changes.receita, 3);
+  assert.equal(
+    buildQuartilSnapshot([sheet("Set_26", [row()])], "base.xlsx").consultants[0].comparisons[3]
+      .changes.receita,
+    null,
+  );
+});
+test("alerta só após quatro registros com qualquer indicador em Q5", () => {
+  const data = buildQuartilSnapshot(
+    ["Jan_26", "Mar_26", "Mai_26", "Set_26"].map((m) => sheet(m, [row()])),
+    "base.xlsx",
+  );
+  const c = data.consultants[0];
+  c.history.forEach((p, i) => {
+    p.quartiles = Object.fromEntries(QUARTIL_METRICS.map((m) => [m, 2]));
+    p.quartiles[QUARTIL_METRICS[i]] = 5;
+  });
+  c.quartiles = c.history.at(-1).quartiles;
+  assert.equal(quartilAlert(c).active, true);
+  assert.equal(quartilAlert({ ...c, history: c.history.slice(1) }).active, false);
+  c.history[2].quartiles = Object.fromEntries(QUARTIL_METRICS.map((m) => [m, 2]));
+  assert.equal(quartilAlert(c).active, false);
+});
+test("parceiro atrasado continua visível e homônimos não são misturados", () => {
+  const data = buildQuartilSnapshot(
+    [sheet("Set_26", [row()]), sheet("Ago_26", [row(), row("Ana", "Outro")])],
+    "base.xlsx",
+  );
+  assert.equal(data.consultants.length, 2);
+  assert.equal(data.consultants.find((c) => c.partnerName === "Outro").month, "2026-08");
+  assert.equal(data.consultants.find((c) => c.partnerName === "A7").history.length, 2);
+});
+test("duplicidade conflitante é rejeitada, linha zerada não sobrepõe resultado", () => {
+  assert.throws(
+    () => buildQuartilSnapshot([sheet("Set_26", [row(), row("Ana", "A7", 999)])], "base.xlsx"),
+    /duplicado/,
+  );
+  const blank = row();
+  for (let i = 3; i < blank.length; i++) blank[i] = 0;
+  assert.equal(
+    buildQuartilSnapshot([sheet("Set_26", [row(), blank])], "base.xlsx").consultants[0].values
+      .receita,
+    500,
+  );
+});
+test("faixas por Excel são independentes da base e recalculam todo o histórico", () => {
+  const custom = structuredClone(QUARTIL_RULES);
+  custom.experienced.metrics.receita[0] = {
+    label: "Acima de R$ 3.000",
+    min: 3000,
+    minExclusive: true,
+  };
+  custom.experienced.metrics.receita[1] = {
+    label: "Acima de R$ 1.400 até R$ 3.000",
+    min: 1400,
+    minExclusive: true,
+    max: 3000,
+  };
+  const imported = parseQuartilSheets([ruleSheet(custom)], "faixas.xlsx");
+  assert.equal(imported.kind, "rules");
+  const base = buildQuartilSnapshot([sheet("Set_26", [row("Ana", "A7", 2500)])], "base.xlsx");
+  assert.equal(base.consultants[0].quartiles.receita, 1);
+  const updated = applyQuartilImport(base, imported);
+  assert.equal(updated.consultants[0].quartiles.receita, 2);
+  assert.equal(updated.source.report, "base.xlsx");
+  assert.equal(updated.rulesSource.report, "faixas.xlsx");
+  const rulesFirst = applyQuartilImport(empty, imported);
+  assert.equal(rulesFirst.consultants.length, 0);
+  assert.equal(
+    applyQuartilImport(rulesFirst, { kind: "snapshot", snapshot: base }).consultants[0].quartiles
+      .receita,
+    2,
+  );
+});
+test("faixas incompletas ou sobrepostas são rejeitadas", () => {
+  const overlap = ruleSheet();
+  overlap.rows[1][3] = "R$ 1.401 a R$ 3.000";
+  assert.throws(() => parseQuartilSheets([overlap], "bad.xlsx"), /sobrepostas/);
+  const missing = ruleSheet();
+  missing.rows.splice(4);
+  assert.throws(() => parseQuartilSheets([missing], "bad.xlsx"), /Informe as faixas/);
+});
+test("normalização migra snapshots antigos sem inventar renovações", () => {
+  const base = buildQuartilSnapshot([sheet("Set_26", [row()])], "base.xlsx");
+  delete base.rules;
+  for (const point of base.consultants[0].history) {
+    delete point.values.renovacoes;
+    delete point.values.receita_renovacoes;
+    point.quartiles.receita = 1;
   }
-  assert.equal(quartilRangeLabel("movel", "experienced", 2), "16 a 20");
-  assert.equal(quartilRangeLabel("movel", "experienced", 5), "até 5");
-  assert.match(quartilRangeLabel("receita", "experienced", 1), /2\.000,00 ou mais/);
-  assert.match(quartilRangeLabel("receita", "new", 4), /acima de R\$\s0,00 até R\$\s99,99/);
+  const migrated = normalizeQuartilSnapshot(base);
+  assert.equal(migrated.consultants[0].values.renovacoes, null);
+  assert.equal(migrated.consultants[0].quartiles.receita, 4);
 });
-test("calendário, histórico faltante e coluna Praceiro do modelo", () => {
-  assert.equal(monthOffset("2026-02", -6), "2025-08");
+test("XLSX real faz ida e volta de faixas, fórmulas e indicadores", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "a7-quartil-"));
+  try {
+    const file = path.join(directory, "base.xlsx");
+    await writeFile(file, createWorkbook([{ name: "Set_26", rows: [headers, row().map(String)] }]));
+    const parsed = parseQuartilSheets(await readSpreadsheetSheets(file), "base.xlsx");
+    assert.equal(parsed.snapshot.consultants[0].values.receita_renovacoes, 369.927);
+    const faixas = ruleSheet();
+    await writeFile(file, createWorkbook([faixas]));
+    const parsedRules = parseQuartilSheets(
+      await readSpreadsheetSheets(file, { includeReference: true }),
+      "faixas.xlsx",
+    );
+    assert.equal(parsedRules.kind, "rules");
+    assert.equal(parsedRules.rules.new.metrics.ftth[3].min, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+test("abas mensais continuam reconhecidas", () => {
   assert.equal(parseMonth("Abr_26 "), "2026-04");
   assert.equal(parseMonth("TABELA DE CONSULTORES"), null);
-  const data = buildQuartilSnapshot(
-    [
-      {
-        name: "Ago_26",
-        rows: [headers.map((h) => (h === "Parceiro" ? "Praceiro" : h)), row("Ana", "A7", 500)],
-      },
-    ],
-    "modelo.xlsx",
-  );
-  assert.equal(data.consultants[0].comparisons[6].changes.receita, null);
 });

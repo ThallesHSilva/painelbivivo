@@ -10,6 +10,8 @@ import {
   Target,
   TrendingUp,
   Trophy,
+  Download,
+  AlertTriangle,
   X,
 } from "lucide-react";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
@@ -29,25 +31,29 @@ import {
 } from "@/components/ui/table";
 import { TableScroll } from "@/components/TableScroll";
 import { EmptyState, ErrorState } from "@/components/EmptyState";
-import { fmtBRL, fmtInt, fmtPct } from "@/lib/format";
+import { fmtInt, fmtPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   isQuartilAlert,
   quartilRangeLabel,
+  QUARTIL_METRICS,
+  QUARTIL_LABELS,
+  QUARTIL_RULES,
+  QUARTIL_MONEY_METRICS,
+  consultantScore,
+  quartilAlert,
+  type QuartilRules,
   type QuartilConsultant,
   type QuartilMetric,
   type QuartilSnapshot,
 } from "@/lib/quartil";
+import { exportQuartil } from "@/lib/quartil-export";
 
 export const Route = createFileRoute("/quartil")({
   head: () => ({ meta: [{ title: "Quartil de Consultores — Mapa Parque" }] }),
   component: QuartilPage,
 });
-const metrics: { id: QuartilMetric; label: string }[] = [
-  { id: "receita", label: "Receita" },
-  { id: "movel", label: "Móvel" },
-  { id: "ftth", label: "FTTH" },
-];
+const metrics = QUARTIL_METRICS.map((id) => ({ id, label: QUARTIL_LABELS[id] }));
 
 /**
  * Faixa do quartil de consultor: Q1 é o melhor colocado e Q5 o que tem mais espaço
@@ -77,7 +83,7 @@ const QUARTILE_TEXT = [
 const TABLE_HEADER_CLASS =
   "bg-muted [&_th]:h-auto [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-border [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-xs [&_th]:font-semibold [&_th]:leading-4 [&_th]:text-foreground";
 const TABLE_BODY_CLASS =
-  "[&_td]:whitespace-nowrap [&_td]:px-3 [&_td]:py-2.5 [&_tr]:border-border [&_tr:hover]:bg-transparent";
+  "text-foreground [&_td]:whitespace-nowrap [&_td]:px-3 [&_td]:py-2.5 [&_tr]:border-border [&_tr:hover]:bg-transparent";
 /**
  * Identificação persistente: a primeira coluna acompanha a rolagem horizontal para
  * que a linha continue identificável no celular, sem retirar nenhuma coluna. No
@@ -108,21 +114,12 @@ const evolutionLabels: Record<EvolutionStatus, string> = {
   down: "Regrediu",
   stable: "Neutro",
 };
-/** Quantas competências cada janela usa, incluindo o mês corrente. Regra do cálculo. */
-const evolutionWindow: Record<EvolutionPeriod, number> = { "3": 3, "6": 6 };
+/** A evolução compara o atual com 3 ou 6 registros anteriores disponíveis. */
 
 function matchesEvolution(value: number | null, status: EvolutionStatus) {
   if (status === "stable") return value === 0;
   if (status === "up") return value !== null && value > 0;
   return value !== null && value < 0;
-}
-
-function quartilePoints(value: number | null) {
-  return value === null ? 0 : 6 - value;
-}
-
-function consultantScore(consultant: import("@/lib/quartil").QuartilConsultant) {
-  return metrics.reduce((total, item) => total + quartilePoints(consultant.quartiles[item.id]), 0);
 }
 
 /**
@@ -139,7 +136,16 @@ function netQuartileChange(changes: Record<QuartilMetric, number | null>) {
 
 /** Valor do indicador: dinheiro em Receita, contagem em Móvel e FTTH; ausência é "—". */
 function metricValue(metric: QuartilMetric, value: number | null | undefined) {
-  return metric === "receita" ? fmtBRL(value) : fmtInt(value);
+  return QUARTIL_MONEY_METRICS.includes(metric)
+    ? value == null
+      ? "—"
+      : value.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+    : fmtInt(value);
 }
 
 /** Participação sobre um total, sem inventar 0% quando não há base para comparar. */
@@ -287,26 +293,24 @@ function QuartilPage() {
     .toLowerCase();
   const rankedConsultants = [...consultants].sort((a, b) => {
     if (rankingMode === "product") {
+      const productDifference = (b.values[metric] ?? -Infinity) - (a.values[metric] ?? -Infinity);
+      if (productDifference) return productDifference;
       const aQuartile = a.quartiles[metric] ?? Infinity;
       const bQuartile = b.quartiles[metric] ?? Infinity;
       if (aQuartile !== bQuartile) return aQuartile - bQuartile;
-      const productDifference = (b.values[metric] ?? -Infinity) - (a.values[metric] ?? -Infinity);
-      return productDifference || a.name.localeCompare(b.name);
+      return a.name.localeCompare(b.name);
     }
     const scoreDifference = consultantScore(b) - consultantScore(a);
     if (scoreDifference) return scoreDifference;
-    const revenueDifference = (b.values.receita ?? -Infinity) - (a.values.receita ?? -Infinity);
-    return revenueDifference || a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name);
   });
   const ranking = new Map<string, number>();
   let lastRankedScore: number | undefined;
-  let lastRankedRevenue: number | null | undefined;
   let lastRankedProductQuartile: number | null | undefined;
   let lastRankedProductValue: number | null | undefined;
   let currentRank = 0;
   rankedConsultants.forEach((consultant, index) => {
     const score = consultantScore(consultant);
-    const revenue = consultant.values.receita;
     const productQuartile = consultant.quartiles[metric];
     const productValue = consultant.values[metric];
     if (rankingMode === "product") {
@@ -316,16 +320,11 @@ function QuartilPage() {
         productValue !== lastRankedProductValue
       )
         currentRank = index + 1;
-    } else if (
-      lastRankedScore === undefined ||
-      score !== lastRankedScore ||
-      revenue !== lastRankedRevenue
-    ) {
+    } else if (lastRankedScore === undefined || score !== lastRankedScore) {
       currentRank = index + 1;
     }
     ranking.set(consultant.id, currentRank);
     lastRankedScore = score;
-    lastRankedRevenue = revenue;
     lastRankedProductQuartile = productQuartile;
     lastRankedProductValue = productValue;
   });
@@ -408,6 +407,34 @@ function QuartilPage() {
           </dl>
         </div>
       </header>
+      {data && (
+        <div className="mb-5 flex flex-wrap items-center gap-2 print:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!rows.length}
+            onClick={() => exportQuartil(data, rows)}
+          >
+            <Download className="size-4" /> Exportar recorte em Excel
+          </Button>
+          {data.originalAvailable && (
+            <Button variant="ghost" size="sm" asChild>
+              <a href="/api/quartil/original">Baixar base original</a>
+            </Button>
+          )}
+          {data.rulesFileAvailable && (
+            <Button variant="ghost" size="sm" asChild>
+              <a href="/api/quartil/original?type=rules">Baixar faixas importadas</a>
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/alimentacao">Importar base ou faixas</Link>
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Faixas: {data.rulesSource?.report ?? "padrão"}
+          </span>
+        </div>
+      )}
 
       {isPending ? (
         <div className="quartil-page space-y-6">
@@ -432,7 +459,7 @@ function QuartilPage() {
         />
       ) : (
         <div className="quartil-screen-only quartil-page space-y-6">
-          <QuartilRangesTable />
+          <QuartilRangesTable rules={data.rules ?? QUARTIL_RULES} />
           {/*
             Escopo do indicador. A seleção é a fonte única do produto exibido no ranking:
             distribuição, evolução, valores e Ranking Produto acompanham este filtro.
@@ -444,13 +471,13 @@ function QuartilPage() {
               </p>
               <p className="page-subtitle mt-1 text-xs text-muted-foreground">
                 Altera a distribuição, a evolução e o produto usado no Ranking Produto. O Ranking
-                Score continua somando os três quartis.
+                Score continua somando os cinco quartis.
               </p>
             </div>
             <div
               role="group"
               aria-label="Indicador do quartil"
-              className="quartil-metric-switcher inline-flex shrink-0 rounded-md border border-border p-0.5"
+              className="quartil-metric-switcher inline-flex flex-wrap gap-1 rounded-md border border-border p-0.5"
             >
               {metrics.map((m) => (
                 <button
@@ -652,14 +679,6 @@ function QuartilPage() {
                 tenureScopedConsultants.find((c) => c.month === data.latestMonth) ??
                 tenureScopedConsultants[0]
               )?.comparisons[period].month;
-              const beforeInBase = before ? (data.months?.includes(before) ?? false) : false;
-              /**
-               * Competências reais da base dentro da janela comparada. É leitura, não
-               * cálculo: a variação continua vindo de `comparisons[period]`.
-               */
-              const windowMonths = (data.months ?? []).filter(
-                (month) => (!before || month >= before) && month <= data.latestMonth,
-              );
               return (
                 <Section
                   key={period}
@@ -667,33 +686,18 @@ function QuartilPage() {
                   title={`Evolução em ${period} meses · ${selectedLabel}`}
                   description={
                     <>
-                      Janela de {evolutionWindow[period]} competências: o mês corrente e os{" "}
-                      {evolutionWindow[period] - 1} anteriores. A comparação usa o quartil de{" "}
-                      <span className="font-medium capitalize text-foreground">
-                        {selectedLabel}
-                      </span>{" "}
-                      de{" "}
-                      <span className="font-medium capitalize text-foreground">
-                        {labelMonth(before ?? "")}
-                      </span>{" "}
-                      contra{" "}
-                      <span className="font-medium capitalize text-foreground">
-                        {labelMonth(data.latestMonth)}
-                      </span>
-                      {before && !beforeInBase
-                        ? " — essa competência inicial não está na base importada, por isso os consultores sem o mês aparecem como sem histórico."
-                        : "."}{" "}
-                      {windowMonths.length ? (
+                      Compara {selectedLabel} atual com {period} registros anteriores disponíveis de
+                      cada consultor.
+                      {before ? (
                         <>
-                          Competências da base nessa janela:{" "}
-                          <span className="font-medium capitalize text-foreground">
-                            {windowMonths.map((month) => labelMonth(month)).join(", ")}
-                          </span>{" "}
-                          ({windowMonths.length} de {evolutionWindow[period]}).{" "}
+                          {" "}
+                          Referência da base: {labelMonth(before)} a {labelMonth(data.latestMonth)}.
                         </>
-                      ) : null}
-                      Filtrar aqui recorta a lista do ranking, sem alterar a ordem nem a pontuação
-                      do ranking geral.
+                      ) : (
+                        " Sem histórico suficiente para esta janela."
+                      )}{" "}
+                      Meses sem apuração não contam como registros. O filtro recorta o ranking e
+                      preserva as posições gerais.
                     </>
                   }
                 >
@@ -759,7 +763,7 @@ function QuartilPage() {
                           <p className="mt-0.5 text-xs text-muted-foreground">{item.label}</p>
                           {"type" in item && (
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
-                              1 mês no Q5 (novos) · 3 meses (demais)
+                              4 registros seguidos com algum indicador em Q5
                             </p>
                           )}
                         </button>
@@ -776,8 +780,8 @@ function QuartilPage() {
             title="Ranking geral de consultores"
             description={
               rankingMode === "score"
-                ? "Ranking Score: soma dos três quartis, de 0 a 15 pontos. Q1 vale 5, Q2 vale 4, Q3 vale 3, Q4 vale 2, Q5 vale 1 e sem classificação vale 0."
-                : `Ranking Produto: ordenado por ${selectedLabel}, do Q1 ao Q5; empates usam o valor do produto selecionado acima.`
+                ? "Ranking Score: soma dos cinco quartis, de 0 a 25 pontos. Q1 vale 5, Q2 vale 4, Q3 vale 3, Q4 vale 2, Q5 vale 1 e sem classificação vale 0."
+                : `Ranking Produto: ordenado por ${selectedLabel}, do maior valor para o menor; empates usam o quartil e o nome.`
             }
             actions={
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
@@ -909,7 +913,7 @@ function QuartilPage() {
               <div className="px-4 py-4 md:px-5">
                 <div className="quartil-ranking-scroll max-h-[min(65vh,42rem)] overflow-y-auto">
                   <TableScroll hint="Role na horizontal para ver todas as colunas. O consultor permanece visível.">
-                    <Table className="quartil-table min-w-[1076px] table-fixed">
+                    <Table className="quartil-table min-w-[1400px] table-fixed">
                       <colgroup>
                         <col className="w-[196px] sm:w-[268px]" />
                         <col className="w-[92px]" />
@@ -917,6 +921,8 @@ function QuartilPage() {
                         <col className="w-[84px]" />
                         <col className="w-[84px]" />
                         <col className="w-[84px]" />
+                        <col className="w-[110px]" />
+                        <col className="w-[140px]" />
                         <col className="w-[132px]" />
                         <col className="w-[136px]" />
                         <col className="w-[136px]" />
@@ -929,13 +935,15 @@ function QuartilPage() {
                           <TableHead align="numeric">Pontos</TableHead>
                           <TableHead>Tempo de casa</TableHead>
                           {metrics.map((m) => (
-                            <TableHead key={m.id} align="state">
+                            <TableHead key={m.id} align="state" className="!whitespace-normal">
                               {m.label}
                             </TableHead>
                           ))}
-                          <TableHead align="numeric">{selectedLabel} atual</TableHead>
-                          <TableHead>Evolução 3 meses</TableHead>
-                          <TableHead>Evolução 6 meses</TableHead>
+                          <TableHead align="numeric" className="!whitespace-normal">
+                            {selectedLabel} atual
+                          </TableHead>
+                          <TableHead className="!whitespace-normal">Evolução 3 meses</TableHead>
+                          <TableHead className="!whitespace-normal">Evolução 6 meses</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody className={TABLE_BODY_CLASS}>
@@ -946,7 +954,7 @@ function QuartilPage() {
                             rank={ranking.get(c.id) ?? 0}
                             score={consultantScore(c)}
                             metric={metric}
-                            months={data.months.slice(-7)}
+                            months={data.months}
                             latestMonth={data.latestMonth}
                             expanded={expanded === c.id}
                             onToggle={() => setExpanded(expanded === c.id ? null : c.id)}
@@ -976,7 +984,7 @@ function QuartilPage() {
  * referência de consulta, não o foco da página. `details` abre por clique, toque e
  * teclado sem estado adicional.
  */
-function QuartilRangesTable() {
+function QuartilRangesTable({ rules }: { rules: QuartilRules }) {
   const groups = [
     { tenure: "experienced" as const, label: "Acima de 3 meses" },
     { tenure: "new" as const, label: "Até 3 meses" },
@@ -1016,7 +1024,7 @@ function QuartilRangesTable() {
                       </TableCell>
                       {metrics.map((m) => (
                         <TableCell key={m.id} className="tabular-nums text-foreground">
-                          {quartilRangeLabel(m.id, group.tenure, quartile)}
+                          {quartilRangeLabel(m.id, group.tenure, quartile, rules)}
                         </TableCell>
                       ))}
                     </TableRow>
@@ -1132,6 +1140,7 @@ function ConsultantRows({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const alert = quartilAlert(c);
   const classified = metrics
     .map((item) => ({ ...item, quartile: c.quartiles[item.id] }))
     .filter(
@@ -1202,6 +1211,11 @@ function ConsultantRows({
                   <span className="capitalize"> · {labelMonth(c.month)}</span>
                 )}
               </span>
+              {alert.active && (
+                <span className="mt-1 block text-xs font-medium text-destructive">
+                  Alerta Q5 · {alert.months} registros
+                </span>
+              )}
               <span className="mt-0.5 block text-xs text-muted-foreground">
                 {expanded ? "Ocultar análise individual" : "Ver análise individual"}
               </span>
@@ -1210,7 +1224,7 @@ function ConsultantRows({
         </TableCell>
         <TableCell align="numeric" className="align-top font-medium text-foreground">
           {score}
-          <span className="text-xs font-normal text-muted-foreground">/15</span>
+          <span className="text-xs font-normal text-muted-foreground">/25</span>
         </TableCell>
         <TableCell className="align-top text-xs text-muted-foreground">{tenureLabel}</TableCell>
         {metrics.map((m) => (
@@ -1230,10 +1244,26 @@ function ConsultantRows({
       </TableRow>
       {expanded && (
         <TableRow className="hover:bg-transparent">
-          <TableCell colSpan={9} className="bg-muted/40 !whitespace-normal !px-4 !py-4 md:!px-5">
+          <TableCell
+            colSpan={metrics.length + 6}
+            className="bg-muted/40 !whitespace-normal !px-4 !py-4 md:!px-5"
+          >
             <h3 className="text-[15px] font-semibold leading-[22px] text-foreground">
               Análise individual · {c.name}
             </h3>
+            {alert.active && (
+              <div
+                role="status"
+                className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <p>
+                  <strong>Alerta de permanência em Q5</strong> · {alert.months} registros seguidos
+                  com algum indicador em Q5. Atualmente:{" "}
+                  {alert.metrics.map((id) => QUARTIL_LABELS[id]).join(", ")}.
+                </p>
+              </div>
+            )}
             <dl className="quartil-insight-grid mt-3 grid gap-3 md:grid-cols-3">
               <div className="quartil-insight-card quartil-insight-strength">
                 <div className="quartil-insight-heading">
@@ -1246,11 +1276,11 @@ function ConsultantRows({
                   {bestQuartile === null
                     ? "Dados insuficientes para classificação."
                     : balanced
-                      ? `Desempenho equilibrado nos três indicadores · Q${bestQuartile}`
+                      ? `Desempenho equilibrado nos cinco indicadores · Q${bestQuartile}`
                       : `${strongest.map((item) => item.label).join(" e ")} · Q${bestQuartile}`}
                 </dd>
                 <dd className="mt-0.5 text-xs text-muted-foreground">
-                  Melhor posição atual entre os três indicadores.
+                  Melhor posição atual entre os cinco indicadores.
                 </dd>
               </div>
               <div className="quartil-insight-card quartil-insight-attention">
@@ -1264,7 +1294,7 @@ function ConsultantRows({
                   {weakestQuartile === null
                     ? "Dados insuficientes para classificação."
                     : balanced
-                      ? `Os três indicadores estão no Q${weakestQuartile}`
+                      ? `Os cinco indicadores estão no Q${weakestQuartile}`
                       : `${weakest.map((item) => item.label).join(" e ")} · Q${weakestQuartile}`}
                 </dd>
                 <dd className="mt-0.5 text-xs text-muted-foreground">

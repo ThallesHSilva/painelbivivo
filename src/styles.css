@@ -829,7 +829,10 @@
 
   .quartil-print-card th:first-child,
   .quartil-print-card td:first-child {
-    max-width: 29mm;
+    width: 32%;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    white-space: normal;
     text-align: left;
   }
 

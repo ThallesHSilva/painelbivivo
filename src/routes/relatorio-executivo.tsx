@@ -37,16 +37,12 @@ import {
   readSavedConversionParams,
   simulateConversion,
 } from "@/lib/opportunity-simulation";
-import { quartilEvolutionCounts } from "@/lib/quartil";
+import { QUARTIL_METRICS, QUARTIL_LABELS, quartilEvolutionCounts } from "@/lib/quartil";
 import type { QscDomain } from "@/lib/qsc";
 import { formatQscDeltaPp, qscVariation, qscWorsened, shortCompetence } from "@/lib/qsc-variation";
 import type { QuartilConsultant, QuartilMetric, QuartilSnapshot } from "@/lib/quartil";
 
-const QUARTIL_REPORT_METRICS: Array<{ id: QuartilMetric; label: string }> = [
-  { id: "receita", label: "Receita" },
-  { id: "movel", label: "Móvel" },
-  { id: "ftth", label: "FTTH" },
-];
+const QUARTIL_REPORT_METRICS = QUARTIL_METRICS.map((id) => ({ id, label: QUARTIL_LABELS[id] }));
 const QUARTIL_REPORT_COLORS = ["#15803d", "#65a30d", "#eab308", "#f97316", "#dc2626"] as const;
 
 const PULSE_METRICS = [
@@ -564,7 +560,7 @@ function CoverReportPage({ partner, date }: { partner: string; date: string }) {
               ["Certificação", "Simulação salva por PV", "#capitulo-certificacao"],
               ["Oportunidades", "Invasão, Móvel, FTTH, TI e Avançada", "#capitulo-oportunidades"],
               ["QSC", "Qualidade e execução", "#capitulo-qsc"],
-              ["Quartil", "Faixas, Receita, Móvel e FTTH", "#capitulo-quartil"],
+              ["Quartil", "Faixas e cinco indicadores comerciais", "#capitulo-quartil"],
             ].map(([title, subtitle, href], index) => (
               <a
                 key={title}
@@ -993,7 +989,7 @@ function QuartilEvolutionCard({
   );
 }
 
-const QUARTIL_ALERT_RULE = "1 mês no Q5 (novos) · 3 meses (demais)";
+const QUARTIL_ALERT_RULE = "4 registros seguidos com algum indicador em Q5";
 /** Linhas de parceiro por métrica no slide único; o excedente é somado numa linha "Demais". */
 const QUARTIL_OVERVIEW_PARTNER_ROWS = 3;
 
@@ -1058,7 +1054,7 @@ function QuartilOverviewTable({ rows }: { rows: QuartilPartnerDistribution[] }) 
           {quartilOverviewRows(rows).map((row) => (
             <tr key={row.partner} className="border-t border-slate-100">
               <th
-                className="truncate px-1.5 py-0.5 text-left font-medium text-slate-700"
+                className="break-words whitespace-normal px-1.5 py-0.5 text-left font-medium text-slate-700"
                 title={row.partner}
               >
                 {row.partner}
@@ -1092,14 +1088,36 @@ function QuartilOverviewTable({ rows }: { rows: QuartilPartnerDistribution[] }) 
  * Visão consolidada num único slide: distribuição Q1–Q5 e cards de evolução (3 e 6
  * meses) de Receita, Móvel e FTTH.
  */
-function QuartilOverviewReportPage({
+function QuartilOverviewReportPage(props: {
+  quartil: QuartilSnapshot | null;
+  partner: string;
+  date: string;
+}) {
+  return (
+    <>
+      <QuartilOverviewReportPageContent
+        {...props}
+        reportMetrics={QUARTIL_REPORT_METRICS.slice(0, 3)}
+      />
+      {props.quartil && (
+        <QuartilOverviewReportPageContent
+          {...props}
+          reportMetrics={QUARTIL_REPORT_METRICS.slice(3)}
+        />
+      )}
+    </>
+  );
+}
+function QuartilOverviewReportPageContent({
   quartil,
   partner,
   date,
+  reportMetrics,
 }: {
   quartil: QuartilSnapshot | null;
   partner: string;
   date: string;
+  reportMetrics: typeof QUARTIL_REPORT_METRICS;
 }) {
   const consultants = quartil?.consultants ?? [];
 
@@ -1117,7 +1135,7 @@ function QuartilOverviewReportPage({
       ) : (
         <>
           <div className="quartil-overview-grid grid grid-cols-1 gap-3">
-            {QUARTIL_REPORT_METRICS.map((metric) => {
+            {reportMetrics.map((metric) => {
               const rows = quartilDistribution(quartil, metric.id);
               const total = sumQuartilRows(rows, "Total");
               return (
@@ -1161,7 +1179,7 @@ function QuartilOverviewReportPage({
           <p className="mt-2 text-[8px] leading-3 text-slate-500">
             {fmtInt(consultants.length)} consultores em {fmtInt(quartil.partners.length)}{" "}
             parceiro(s) · competência mais recente: {quartil.latestMonth || "—"}.
-            Evoluiu/Regrediu/Neutro comparam o quartil do mês corrente com o de 3 e 6 meses atrás;
+            Evoluiu/Regrediu/Neutro comparam o atual com 3 e 6 registros anteriores disponíveis;
             consultores sem histórico ficam fora. Sem Q = sem classificação no mês.
           </p>
         </>

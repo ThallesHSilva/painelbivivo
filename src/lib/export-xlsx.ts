@@ -1,3 +1,4 @@
+import { zip, sheet } from "./xlsx-workbook";
 import { PORTFOLIO, type PortfolioRow } from "@/mocks/data";
 
 type ExportKind =
@@ -25,15 +26,6 @@ const labels: Record<ExportKind, string> = {
   "aparelhos-sem-renovacao": "Aparelho sem renovação",
 };
 
-function xmlEscape(value: unknown) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
 function matches(row: PortfolioRow, kind: ExportKind) {
   switch (kind) {
     case "movel":
@@ -57,119 +49,6 @@ function matches(row: PortfolioRow, kind: ExportKind) {
     case "oportunidades":
       return row.oportMovel || row.oportFtth || row.oportLicencas || row.servicosDigitais;
   }
-}
-
-function crc32(bytes: Uint8Array) {
-  let crc = 0xffffffff;
-  for (const byte of bytes) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-  }
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function u16(value: number) {
-  return new Uint8Array([value & 255, (value >>> 8) & 255]);
-}
-function u32(value: number) {
-  return new Uint8Array([
-    value & 255,
-    (value >>> 8) & 255,
-    (value >>> 16) & 255,
-    (value >>> 24) & 255,
-  ]);
-}
-function concat(parts: Uint8Array[]) {
-  const result = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0));
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.length;
-  }
-  return result;
-}
-
-function zip(files: Array<{ name: string; data: string }>) {
-  const encoder = new TextEncoder();
-  const local: Uint8Array[] = [];
-  const central: Uint8Array[] = [];
-  let offset = 0;
-  for (const file of files) {
-    const name = encoder.encode(file.name);
-    const data = encoder.encode(file.data);
-    const crc = crc32(data);
-    local.push(
-      concat([
-        u32(0x04034b50),
-        u16(20),
-        u16(0),
-        u16(0),
-        u16(0),
-        u16(0),
-        u32(crc),
-        u32(data.length),
-        u32(data.length),
-        u16(name.length),
-        u16(0),
-        name,
-        data,
-      ]),
-    );
-    central.push(
-      concat([
-        u32(0x02014b50),
-        u16(20),
-        u16(20),
-        u16(0),
-        u16(0),
-        u16(0),
-        u16(0),
-        u32(crc),
-        u32(data.length),
-        u32(data.length),
-        u16(name.length),
-        u16(0),
-        u16(0),
-        u16(0),
-        u16(0),
-        u32(0),
-        u32(offset),
-        name,
-      ]),
-    );
-    offset += local[local.length - 1].length;
-  }
-  const centralData = concat(central);
-  return concat([
-    ...local,
-    centralData,
-    u32(0x06054b50),
-    u16(0),
-    u16(0),
-    u16(files.length),
-    u16(files.length),
-    u32(centralData.length),
-    u32(offset),
-    u16(0),
-  ]);
-}
-
-function sheet(rows: string[][]) {
-  const body = rows
-    .map((row, rowIndex) => {
-      const cells = row
-        .map((value, columnIndex) => {
-          const reference = `${String.fromCharCode(65 + columnIndex)}${rowIndex + 1}`;
-          const numeric = rowIndex > 0 && /^-?\d+(\.\d+)?$/.test(value);
-          return numeric
-            ? `<c r="${reference}"><v>${value}</v></c>`
-            : `<c r="${reference}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
-        })
-        .join("");
-      return `<row r="${rowIndex + 1}">${cells}</row>`;
-    })
-    .join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
 }
 
 export function exportOpportunityBase(kind: ExportKind, partnerIds: string[]) {

@@ -129,7 +129,7 @@ export async function readSpreadsheetRows(filePath, sheetPath = "xl/worksheets/s
   );
 }
 
-export async function readSpreadsheetSheets(filePath) {
+export async function readSpreadsheetSheets(filePath, { includeReference = false } = {}) {
   const bytes = await fs.readFile(filePath);
   const entries = zipEntries(bytes);
   const xml = (name) => {
@@ -145,7 +145,7 @@ export async function readSpreadsheetSheets(filePath) {
   const sheets = [];
   for (const [, attrs] of xml("xl/workbook.xml").matchAll(/<sheet\b([^>]+)\/?\s*>/g)) {
     const name = decodeXml(attrs.match(/\bname="([^"]+)"/)?.[1]);
-    if (normalizeHeader(name) === "TABELADECONSULTORES") continue;
+    if (!includeReference && normalizeHeader(name) === "TABELADECONSULTORES") continue;
     const target = relationships.get(attrs.match(/\br:id="([^"]+)"/)?.[1]);
     if (!target) throw new Error(`Aba ${name} sem conteúdo.`);
     const sheetPath = target.startsWith("/")

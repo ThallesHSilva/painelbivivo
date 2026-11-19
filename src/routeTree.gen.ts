@@ -26,6 +26,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiQuartilRouteImport } from './routes/api.quartil'
 import { Route as ApiQscRouteImport } from './routes/api.qsc'
 import { Route as ApiInvasaoRouteImport } from './routes/api.invasao'
+import { Route as ApiQuartilOriginalRouteImport } from './routes/api.quartil.original'
 import { Route as ApiDataUploadRouteImport } from './routes/api.data.upload'
 import { Route as ApiDataResultadosRouteImport } from './routes/api.data.resultados'
 import { Route as ApiDataMapaRouteImport } from './routes/api.data.mapa'
@@ -123,6 +124,11 @@ const ApiInvasaoRoute = ApiInvasaoRouteImport.update({
   path: '/api/invasao',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiQuartilOriginalRoute = ApiQuartilOriginalRouteImport.update({
+  id: '/original',
+  path: '/original',
+  getParentRoute: () => ApiQuartilRoute,
+} as any)
 const ApiDataUploadRoute = ApiDataUploadRouteImport.update({
   id: '/api/data/upload',
   path: '/api/data/upload',
@@ -197,7 +203,7 @@ export interface FileRoutesByFullPath {
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
   '/api/qsc': typeof ApiQscRoute
-  '/api/quartil': typeof ApiQuartilRoute
+  '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
@@ -209,6 +215,7 @@ export interface FileRoutesByFullPath {
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
   '/api/data/upload': typeof ApiDataUploadRoute
+  '/api/quartil/original': typeof ApiQuartilOriginalRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -227,7 +234,7 @@ export interface FileRoutesByTo {
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
   '/api/qsc': typeof ApiQscRoute
-  '/api/quartil': typeof ApiQuartilRoute
+  '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
@@ -239,6 +246,7 @@ export interface FileRoutesByTo {
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
   '/api/data/upload': typeof ApiDataUploadRoute
+  '/api/quartil/original': typeof ApiQuartilOriginalRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -258,7 +266,7 @@ export interface FileRoutesById {
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
   '/api/qsc': typeof ApiQscRoute
-  '/api/quartil': typeof ApiQuartilRoute
+  '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
@@ -270,6 +278,7 @@ export interface FileRoutesById {
   '/api/data/mapa': typeof ApiDataMapaRoute
   '/api/data/resultados': typeof ApiDataResultadosRoute
   '/api/data/upload': typeof ApiDataUploadRoute
+  '/api/quartil/original': typeof ApiQuartilOriginalRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -302,6 +311,7 @@ export interface FileRouteTypes {
     | '/api/data/mapa'
     | '/api/data/resultados'
     | '/api/data/upload'
+    | '/api/quartil/original'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -332,6 +342,7 @@ export interface FileRouteTypes {
     | '/api/data/mapa'
     | '/api/data/resultados'
     | '/api/data/upload'
+    | '/api/quartil/original'
   id:
     | '__root__'
     | '/'
@@ -362,6 +373,7 @@ export interface FileRouteTypes {
     | '/api/data/mapa'
     | '/api/data/resultados'
     | '/api/data/upload'
+    | '/api/quartil/original'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -381,7 +393,7 @@ export interface RootRouteChildren {
   UsuariosRoute: typeof UsuariosRoute
   ApiInvasaoRoute: typeof ApiInvasaoRoute
   ApiQscRoute: typeof ApiQscRoute
-  ApiQuartilRoute: typeof ApiQuartilRoute
+  ApiQuartilRoute: typeof ApiQuartilRouteWithChildren
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
   ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
@@ -516,6 +528,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInvasaoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/quartil/original': {
+      id: '/api/quartil/original'
+      path: '/original'
+      fullPath: '/api/quartil/original'
+      preLoaderRoute: typeof ApiQuartilOriginalRouteImport
+      parentRoute: typeof ApiQuartilRoute
+    }
     '/api/data/upload': {
       id: '/api/data/upload'
       path: '/api/data/upload'
@@ -596,6 +615,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ApiQuartilRouteChildren {
+  ApiQuartilOriginalRoute: typeof ApiQuartilOriginalRoute
+}
+
+const ApiQuartilRouteChildren: ApiQuartilRouteChildren = {
+  ApiQuartilOriginalRoute: ApiQuartilOriginalRoute,
+}
+
+const ApiQuartilRouteWithChildren = ApiQuartilRoute._addFileChildren(
+  ApiQuartilRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AlimentacaoRoute: AlimentacaoRoute,
@@ -613,7 +644,7 @@ const rootRouteChildren: RootRouteChildren = {
   UsuariosRoute: UsuariosRoute,
   ApiInvasaoRoute: ApiInvasaoRoute,
   ApiQscRoute: ApiQscRoute,
-  ApiQuartilRoute: ApiQuartilRoute,
+  ApiQuartilRoute: ApiQuartilRouteWithChildren,
   ApiAdminUsersRoute: ApiAdminUsersRoute,
   ApiAuthLoginRoute: ApiAuthLoginRoute,
   ApiAuthLogoutRoute: ApiAuthLogoutRoute,

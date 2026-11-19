@@ -17,6 +17,8 @@ import { pipeline } from "node:stream/promises";
 import { execFile } from "node:child_process";
 import { promisify, TextDecoder } from "node:util";
 import { isSameOriginRequest, readAuthUser } from "@/lib/auth.server";
+import { applyQuartilImport, type QuartilImport, type QuartilSnapshot } from "@/lib/quartil";
+import { EMPTY_SNAPSHOTS } from "@/lib/snapshot-types";
 import {
   listDataImports,
   readDataSnapshot,
@@ -30,11 +32,7 @@ const execFileAsync = promisify(execFile);
 const MAX_FILE_SIZE = 500 * 1024 * 1024;
 const MAX_CHUNK_SIZE = 20 * 1024 * 1024;
 const QSC_KINDS = ["QSC Carteira", "QSC Fixa", "QSC Móvel"] as const;
-const IMPORT_KINDS = [
-  "Quartil",
-  "Invasão de carteira",
-  "Mapa Parque",
-] as const;
+const IMPORT_KINDS = ["Quartil", "Invasão de carteira", "Mapa Parque"] as const;
 
 function uploadsPath() {
   return path.resolve(process.env.UPLOAD_PATH || ".data/uploads");
@@ -496,9 +494,21 @@ export const Route = createFileRoute("/api/data/upload")({
               [path.resolve("scripts", "process-quartil.mjs"), uploadedPath, snapshotPath],
               { maxBuffer: 10 * 1024 * 1024, timeout: 30 * 60 * 1000 },
             );
-            await persistSnapshot({
+            const imported = JSON.parse(await readFile(snapshotPath, "utf8")) as QuartilImport;
+            if (imported.kind === "rules") imported.source.report = originalName;
+            else imported.snapshot.source.report = originalName;
+            const previous =
+              readDataSnapshot<QuartilSnapshot>("quartil") ?? EMPTY_SNAPSHOTS.quartil;
+            const payload = applyQuartilImport(previous, imported);
+            const archiveDirectory = path.join(uploadDirectory, "quartil");
+            await mkdir(archiveDirectory, { recursive: true });
+            const archivedFile = path.join(archiveDirectory, path.basename(uploadedPath));
+            await rename(uploadedPath, archivedFile);
+            if (imported.kind === "rules") payload.rulesFile = archivedFile;
+            else payload.originalFile = archivedFile;
+            saveDataSnapshot({
               kind: "quartil",
-              snapshotPath,
+              payload,
               sourceName: originalName,
               uploadedBy,
               sizeBytes: declaredFileSize || contentLength,

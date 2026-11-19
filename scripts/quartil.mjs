@@ -1,19 +1,17 @@
 import { normalizeHeader } from "./spreadsheet-reader.mjs";
+import {
+  QUARTIL_RULES,
+  QUARTIL_METRICS,
+  quartilesFor,
+  quartilComparisons,
+} from "./quartil-rules.ts";
+export { QUARTIL_RULES } from "./quartil-rules.ts";
 
-// Boundaries are inclusive. Q1 is the strongest performance.
-export const QUARTIL_RULES = {
-  experienced: { receita: [2000, 1500, 1000, 500], movel: [21, 16, 11, 6], ftth: [15, 10, 6, 3] },
-  new: { receita: [500, 251, 100, Number.MIN_VALUE], movel: [16, 11, 6, 1], ftth: [10, 6, 3, 1] },
-};
+// Intervalos compartilhados com a tela e os relatórios. Q1 é a melhor faixa.
 export function quartil(value, tenure) {
   if (value === null || tenure === null) return null;
-  const rules = QUARTIL_RULES[tenure];
-  return Object.fromEntries(
-    Object.entries(value).map(([metric, amount]) => [
-      metric,
-      amount === null ? null : rules[metric].findIndex((minimum) => amount >= minimum) + 1 || 5,
-    ]),
-  );
+  const all = quartilesFor({ values: value, tenure });
+  return Object.fromEntries(Object.keys(value).map((metric) => [metric, all[metric]]));
 }
 export function monthOffset(month, offset) {
   const [year, number] = month.split("-").map(Number);
@@ -62,6 +60,8 @@ export function buildQuartilSnapshot(sheets, sourceName) {
       receita: headers.indexOf("RECEITATELECOMTT"),
       movel: headers.indexOf("FISICOSMOVEL"),
       ftth: headers.indexOf("FISICOSFTTH"),
+      renovacoes: headers.findIndex((h) => /RENOVAC/.test(h) && !/RECEITA/.test(h)),
+      receita_renovacoes: headers.findIndex((h) => /RECEITA.*RENOVAC/.test(h)),
     };
     if ([columns.partner, columns.receita, columns.movel, columns.ftth].some((i) => i < 0))
       throw new Error(
@@ -99,7 +99,7 @@ export function buildQuartilSnapshot(sheets, sourceName) {
               : "new"
             : null;
       const values = Object.fromEntries(
-        ["receita", "movel", "ftth"].map((metric) => {
+        QUARTIL_METRICS.map((metric) => {
           const raw = row[columns[metric]];
           const value =
             raw === "" || raw == null
@@ -121,7 +121,7 @@ export function buildQuartilSnapshot(sheets, sourceName) {
         month,
         tenure,
         values,
-        quartiles: quartil(values, tenure) ?? { receita: null, movel: null, ftth: null },
+        quartiles: quartilesFor({ values, tenure }),
       };
       // Linha totalmente zerada: sobra de duplicidade na planilha, não um resultado real.
       const blank = Object.values(values).every((value) => value === null || value === 0);
@@ -163,31 +163,7 @@ export function buildQuartilSnapshot(sheets, sourceName) {
       const history = orderedMonths
         .map((month) => recordMap.get(`${current.id}:${month}`))
         .filter(Boolean);
-      const comparisons = Object.fromEntries(
-        // O mês corrente faz parte da janela: 3 meses = atual + 2 anteriores;
-        // 6 meses = atual + 5 anteriores. A janela parte da competência do próprio
-        // parceiro, para que a evolução compare o mesmo intervalo de meses.
-        [
-          [3, -2],
-          [6, -5],
-        ].map(([period, offset]) => {
-          const month = monthOffset(current.month, offset);
-          const previous = recordMap.get(`${current.id}:${month}`);
-          return [
-            period,
-            {
-              month,
-              changes: Object.fromEntries(
-                ["receita", "movel", "ftth"].map((metric) => {
-                  const before = previous?.quartiles[metric] ?? null;
-                  const now = current.quartiles[metric];
-                  return [metric, before === null || now === null ? null : before - now];
-                }),
-              ),
-            },
-          ];
-        }),
-      );
+      const comparisons = quartilComparisons({ history });
       return { ...current, history, comparisons };
     });
   const partners = [
@@ -202,5 +178,6 @@ export function buildQuartilSnapshot(sheets, sourceName) {
     partners,
     consultants,
     warnings,
+    rules: QUARTIL_RULES,
   };
 }

@@ -34,6 +34,7 @@ graphify-out/
 
 # Local visual QA evidence (may contain screenshots)
 .tmp-validation/
+.playwright-cli/
 
 # Wrangler / Cloudflare
 .wrangler/

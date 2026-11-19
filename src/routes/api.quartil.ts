@@ -16,6 +16,7 @@ export const Route = createFileRoute("/api/quartil")({
         if (!user || user.role === "admin")
           return Response.json({ message: "Acesso não autorizado." }, { status: 403 });
         const snapshot = getDataSnapshot("quartil");
+        const { originalFile, rulesFile, ...publicSnapshot } = snapshot;
         const known = [
           ...getDataSnapshot("mapa-parque").partners,
           ...getDataSnapshot("qsc").partners,
@@ -45,7 +46,9 @@ export const Route = createFileRoute("/api/quartil")({
         );
         return Response.json(
           {
-            ...snapshot,
+            ...publicSnapshot,
+            originalAvailable: Boolean(originalFile),
+            rulesFileAvailable: Boolean(rulesFile),
             partners,
             // Source diagnostics may contain consultant names from other partners.
             warnings: [],

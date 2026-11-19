@@ -40,7 +40,6 @@ type SelectedFile = {
   source: File;
 };
 
-
 type UploadHistoryItem = {
   id: number;
   kind: string;
@@ -93,7 +92,8 @@ const EXPECTED_BASES = [
   {
     number: "05",
     title: "Quartil",
-    description: "Consultores por parceiro, abas mensais e evolução de Receita, Móvel e FTTH",
+    description:
+      "Cinco indicadores de consultores ou faixas Q1–Q5 em Excel; as faixas recalculam a base existente",
   },
   {
     number: "06",
@@ -236,6 +236,11 @@ async function identifySpreadsheet(file: File): Promise<FileKind> {
   const sampleMatching = (required: string[]) => hasHeaders(combinedHeaders, required);
   const matches = (required: string[]) => firstMatching(required) || sampleMatching(required);
   if (matches(["CONSULTOR", "RECEITATELECOMTT", "FISICOSMOVEL", "FISICOSFTTH"])) return "Quartil";
+  if (
+    matches(["Q1", "Q2", "Q3", "Q4", "Q5"]) ||
+    matches(["QUARTIL1", "QUARTIL2", "QUARTIL3", "QUARTIL4", "QUARTIL5"])
+  )
+    return "Quartil";
   if (
     matches([
       "ANOMES",
@@ -562,11 +567,7 @@ function AlimentacaoPage() {
     setBatchImporting(true);
     let completed = 0;
     for (const file of queuedFiles) {
-      const imported = await importFile(
-        file,
-        "Falha ao importar a base.",
-        false,
-      );
+      const imported = await importFile(file, "Falha ao importar a base.", false);
       if (imported) completed += 1;
     }
     setBatchImporting(false);
