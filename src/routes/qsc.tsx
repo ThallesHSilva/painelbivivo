@@ -440,7 +440,7 @@ function DomainPanel({
         {metrics.length === 0 ? (
           <EmptyState
             title="Sem indicadores no recorte"
-            description="Nenhum indicador deste grupo foi apurado para os parceiros selecionados. Ajuste ou limpe o filtro de parceiros."
+            description="Nenhum indicador deste grupo foi apurado na base da operação. Importe uma base QSC com apuração para este grupo."
           />
         ) : (
           <TableScroll>

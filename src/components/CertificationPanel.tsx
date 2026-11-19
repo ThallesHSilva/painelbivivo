@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, TriangleAlert } from "lucide-react";
 import {
   CertificationQscHistory,
@@ -10,11 +10,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePartnerFilter } from "@/contexts/AppContexts";
-import { usePartners } from "@/hooks/useData";
 import { fmtBRL, fmtInt } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  loadCertificationPreview,
+  saveCertificationPreview as putPreview,
+} from "@/lib/certification-client";
 import {
   Table,
   TableBody,
@@ -24,7 +26,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TableScroll } from "@/components/TableScroll";
-import { EmptyState } from "@/components/EmptyState";
 import { SaveState, type SaveStatus } from "@/components/SaveState";
 
 import {
@@ -68,22 +69,8 @@ const TABLE_BODY_CLASS = "[&_td]:px-3 [&_td]:py-2 [&_tr]:border-border";
 const FIELD_CLASS = "h-9 px-2 text-sm";
 const DERIVED_FIELDS = ["totalizer", "points", "band"];
 
-/** Gravação da prévia. Mesmo endpoint já usado pelo autosave; nenhuma API nova. */
-async function putPreview(partnerId: string, payload: CyclePayload) {
-  const response = await fetch("/api/certificacao/previa", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ partnerId, payload }),
-  });
-  const body = (await response.json()) as { message?: string };
-  if (!response.ok) throw new Error(body.message ?? "Não foi possível salvar a prévia.");
-}
-
-type PendingWrite = { partnerId: string; partnerName: string; payload: CyclePayload };
-
 export function CertificationPanel() {
   const [cycles, setCycles] = useState(INITIAL_CYCLES);
-  // Identidade do ciclo em simulação: muda a cada edição e reinicia o debounce do autosave.
   const currentCycle = cycles.current;
   const [view, setView] = useState<CycleId>("previous");
   const [expanded, setExpanded] = useState<Record<CycleId, boolean>>({
@@ -92,65 +79,21 @@ export function CertificationPanel() {
   });
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [saveState, setSaveState] = useState<SaveStatus>("idle");
-  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  /**
-   * Gravação pendente do PV anterior. Enquanto existir, a troca de parceiro não é
-   * concluída: a prévia do novo PV não é carregada nem editada, de modo que nenhuma
-   * alteração vaze entre parceiros.
-   */
-  const [pendingTransfer, setPendingTransfer] = useState<PendingWrite | null>(null);
-  const [transferAttempt, setTransferAttempt] = useState(0);
-  const pendingRef = useRef<PendingWrite | null>(null);
+  const [writeAttempt, setWriteAttempt] = useState(0);
+  const pendingRef = useRef<CyclePayload | null>(null);
 
-  const { selected } = usePartnerFilter();
-  const { data: partners = [] } = usePartners();
-  const candidatePartnerId = selected.length === 1 ? selected[0] : null;
-  const activePartner = useMemo(
-    () => partners.find((partner) => partner.id === candidatePartnerId) ?? null,
-    [candidatePartnerId, partners],
-  );
-  const activePartnerId = activePartner?.id ?? null;
-
-  /*
-    Carga da prévia do PV. Declarada antes do autosave para que a troca de parceiro
-    seja tratada antes de qualquer gravação agendada para o parceiro anterior.
-  */
   useEffect(() => {
-    const pending = pendingRef.current;
-    if (pending && pending.partnerId !== activePartnerId) {
-      pendingRef.current = null;
-      setHasPendingChanges(false);
-      setPendingTransfer(pending);
-      return;
-    }
-    if (pendingTransfer) return;
-
-    if (!activePartnerId) {
-      setCycles((current) => ({ ...current, current: INITIAL_CYCLES.current }));
-      setHasPendingChanges(false);
-      setSaveState("idle");
-      setLoadError(null);
-      return;
-    }
-
     let cancelled = false;
-    setHasPendingChanges(false);
-    setSaveState("idle");
-    setLoadError(null);
     setLoadingPreview(true);
-    void fetch(`/api/certificacao/previa?partnerId=${encodeURIComponent(activePartnerId)}`, {
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Não foi possível carregar a prévia deste PV.");
-        return response.json() as Promise<{ preview?: { payload?: unknown } | null }>;
-      })
-      .then((payload) => {
+    setLoadError(null);
+    void loadCertificationPreview()
+      .then((body) => {
         if (cancelled) return;
-        const preview = payload.preview?.payload;
-        const hasExpectedShape =
+        const preview = body.preview?.payload;
+        const valid =
           preview &&
           typeof preview === "object" &&
           "summary" in preview &&
@@ -158,81 +101,56 @@ export function CertificationPanel() {
           "qsc" in preview;
         setCycles((current) => ({
           ...current,
-          current: hasExpectedShape
+          current: valid
             ? withoutDuplicateLocationRow(preview as CyclePayload)
             : INITIAL_CYCLES.current,
         }));
       })
       .catch((error: Error) => {
-        if (cancelled) return;
-        setLoadError(error.message);
+        if (!cancelled) setLoadError(error.message);
       })
       .finally(() => {
         if (!cancelled) setLoadingPreview(false);
       });
-
     return () => {
       cancelled = true;
     };
-  }, [activePartnerId, pendingTransfer, reloadToken]);
+  }, [reloadToken]);
 
-  /* Conclusão da gravação pendente antes de adotar o parceiro recém-selecionado. */
   useEffect(() => {
-    if (!pendingTransfer) return;
-    let cancelled = false;
-    setSaveState("saving");
-    void putPreview(pendingTransfer.partnerId, pendingTransfer.payload)
-      .then(() => {
-        if (cancelled) return;
-        setSaveState("saved");
-        setPendingTransfer(null);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setSaveState("error");
-        toast.error(error instanceof Error ? error.message : "Não foi possível salvar a prévia.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pendingTransfer, transferAttempt]);
-
-  /* Autosave do ciclo em simulação. */
-  useEffect(() => {
-    if (!activePartnerId || !hasPendingChanges || loadingPreview || pendingTransfer) return;
+    if (!hasPendingChanges || loadingPreview || loadError) return;
     const pending = pendingRef.current;
-    // A gravação só vale para o parceiro que originou a alteração.
-    if (!pending || pending.partnerId !== activePartnerId) return;
-
+    if (!pending) return;
     const timer = window.setTimeout(() => {
       setSaveState("saving");
-      void putPreview(pending.partnerId, pending.payload)
+      void putPreview(pending)
         .then(() => {
           if (pendingRef.current === pending) {
             pendingRef.current = null;
             setHasPendingChanges(false);
+            setSaveState("saved");
           }
-          setSaveState("saved");
         })
-        .catch((error: unknown) => {
+        .catch((error: Error) => {
           setSaveState("error");
-          toast.error(error instanceof Error ? error.message : "Não foi possível salvar a prévia.");
+          toast.error(error.message);
         });
     }, 700);
-
     return () => window.clearTimeout(timer);
-  }, [activePartnerId, currentCycle, hasPendingChanges, loadingPreview, pendingTransfer]);
+  }, [hasPendingChanges, currentCycle, loadingPreview, loadError, writeAttempt]);
 
-  const editable =
-    Boolean(activePartnerId) && !loadingPreview && !pendingTransfer && loadError === null;
+  useEffect(
+    () => () => {
+      const pending = pendingRef.current;
+      if (pending)
+        void putPreview(pending, true).catch((error: Error) => toast.error(error.message));
+    },
+    [],
+  );
 
+  const editable = !loadingPreview && loadError === null;
   const commit = (next: CyclePayload) => {
-    if (!activePartnerId) return;
-    pendingRef.current = {
-      partnerId: activePartnerId,
-      partnerName: activePartner?.name ?? activePartnerId,
-      payload: next,
-    };
+    pendingRef.current = next;
     setHasPendingChanges(true);
     setSaveState("idle");
     setCycles((current) => ({ ...current, current: next }));
@@ -334,7 +252,7 @@ export function CertificationPanel() {
       align: "numeric",
     }));
     const columns = [...monthColumns, ...BASE_COLUMNS];
-    // Simulação só é editável no ciclo atual, com um PV resolvido e sem carga pendente.
+    // A simulação é editável no ciclo atual após carregar a prévia da operação.
     const cycleEditable = cycle === "current" && editable;
 
     const derivedRow = (row: CertificationRow) => (
@@ -434,12 +352,22 @@ export function CertificationPanel() {
               {meta.title}
             </h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              PV {activePartner?.name ?? "—"} · {meta.period} · {meta.note}
+              Operação · {meta.period} · {meta.note}
             </p>
           </div>
           {cycle === "current" && (
             <div className="shrink-0">
               <SaveState status={saveState} busy={loadingPreview} />
+              {saveState === "error" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => setWriteAttempt((value) => value + 1)}
+                >
+                  Tentar salvar novamente
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -509,7 +437,7 @@ export function CertificationPanel() {
                 ))}
               </div>
               <p className="sr-only" role="status">
-                Carregando a simulação do PV selecionado.
+                Carregando a simulação da operação.
               </p>
             </div>
           ) : (
@@ -520,58 +448,6 @@ export function CertificationPanel() {
     );
   };
 
-  if (!activePartnerId) {
-    return (
-      <Card className="overflow-hidden">
-        <div className="p-4 md:p-5">
-          <EmptyState
-            title="Selecione um único PV"
-            description="A Certificação é apurada por PV: o ciclo fechado e a simulação pertencem a um parceiro. Use o filtro de parceiros no menu superior e mantenha apenas um selecionado."
-          />
-        </div>
-      </Card>
-    );
-  }
-
-  /*
-    Troca de parceiro com gravação pendente: a simulação anterior é gravada antes de
-    o painel adotar o novo PV. Enquanto não concluir, nada do parceiro anterior é
-    exibido nem editado sob o parceiro recém-selecionado.
-  */
-  if (pendingTransfer) {
-    const failed = saveState === "error";
-    return (
-      <Card className="overflow-hidden">
-        <div className="flex flex-col items-start gap-3 px-4 py-4 md:px-5">
-          <div>
-            <h2 className="text-lg font-semibold leading-[1.45] tracking-tight text-foreground">
-              {failed
-                ? "Alterações do PV anterior não foram salvas"
-                : "Concluindo a gravação do PV anterior"}
-            </h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              {failed
-                ? `A simulação de ${pendingTransfer.partnerName} tem alterações pendentes. A troca de PV só é concluída após a gravação, para que nada seja perdido nem aplicado ao parceiro errado.`
-                : `Salvando a simulação de ${pendingTransfer.partnerName} antes de abrir o PV selecionado.`}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <SaveState status={saveState} />
-            {failed && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setTransferAttempt((attempt) => attempt + 1)}
-              >
-                Tentar novamente
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
-    );
-  }
-
   if (loadError) {
     return (
       <Card className="overflow-hidden">
@@ -581,7 +457,7 @@ export function CertificationPanel() {
               Não foi possível carregar a simulação
             </h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              {loadError} O PV selecionado foi preservado.
+              {loadError} Tente carregar novamente para continuar.
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => setReloadToken((token) => token + 1)}>

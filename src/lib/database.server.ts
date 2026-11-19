@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 
 export type UserStatus = "pending" | "approved" | "rejected";
 const SQLITE_CONSTRAINT_UNIQUE = 2067;
+export const CERTIFICATION_SCOPE_ID = "__operation__";
 
 export type DataSnapshotKind =
   | "quartil"
@@ -498,6 +499,20 @@ export function getCertificationPreview(partnerId: string): CertificationPreview
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
   };
+}
+
+/** A prévia da operação tem prioridade; o último registro legado é preservado como ponto de partida. */
+export function getOperationCertificationPreview(): CertificationPreview | null {
+  const current = getCertificationPreview(CERTIFICATION_SCOPE_ID);
+  if (current) return current;
+  const latest = getDatabase()
+    .prepare(
+      "SELECT partner_id FROM certification_previews ORDER BY updated_at DESC, partner_id ASC LIMIT 1",
+    )
+    .get() as { partner_id: string } | undefined;
+  if (!latest) return null;
+  const preview = getCertificationPreview(latest.partner_id);
+  return preview ? { ...preview, partnerId: CERTIFICATION_SCOPE_ID } : null;
 }
 
 export function saveCertificationPreview(input: {

@@ -1,4 +1,5 @@
-﻿import { useInvasaoTickets } from "@/hooks/useInvasaoTickets";
+import { loadCertificationPreview } from "@/lib/certification-client";
+import { useInvasaoTickets } from "@/hooks/useInvasaoTickets";
 import {
   invasaoReportPages,
   opportunitiesReportPages,
@@ -160,22 +161,11 @@ function ExecutiveReportPage() {
     },
   });
   const invasaoTickets = useInvasaoTickets(!!invasaoQuery.data?.months.length);
-  const activePartner =
-    selected.length === 1 ? partners.find((partner) => partner.id === selected[0]) : undefined;
   const certificationQuery = useQuery({
-    queryKey: ["certification-preview", activePartner?.id],
-    enabled: ready && !!activePartner,
+    queryKey: ["certification-preview", "operation"],
+    enabled: ready,
     retry: false,
-    queryFn: async ({ signal }) => {
-      const response = await fetch(
-        `/api/certificacao/previa?partnerId=${encodeURIComponent(activePartner!.id)}`,
-        { cache: "no-store", signal },
-      );
-      if (!response.ok) throw new Error("Simulação de Certificação indisponível.");
-      return response.json() as Promise<{
-        preview: { payload: unknown; updatedAt: string } | null;
-      }>;
-    },
+    queryFn: ({ signal }) => loadCertificationPreview(signal),
   });
   const quartil = quartilQuery.data ?? null;
 
@@ -247,7 +237,7 @@ function ExecutiveReportPage() {
     quartilQuery.isPending ||
     invasaoQuery.isPending ||
     !invasaoTickets.isReady ||
-    (!!activePartner && certificationQuery.isPending);
+    certificationQuery.isPending;
   const meta = { partner: partnerLabel, date: reportDate };
 
   if (isLoading) {
@@ -268,9 +258,9 @@ function ExecutiveReportPage() {
       <ChapterCoverPage
         id="capitulo-certificacao"
         number="01"
-        eyebrow="Certificação por PV"
+        eyebrow="Certificação da operação"
         title="Certificação"
-        description="Simulação salva do ciclo atual, sem consolidação entre parceiros."
+        description="Simulação salva do ciclo atual da operação."
         partner={partnerLabel}
         date={reportDate}
         tone="violet"
@@ -278,7 +268,7 @@ function ExecutiveReportPage() {
       {certificationReportPages(
         certificationQuery.data?.preview?.payload,
         certificationQuery.data?.preview?.updatedAt,
-        !activePartner ? "selection" : certificationQuery.isError ? "error" : "individual",
+        certificationQuery.isError ? "error" : "operation",
         meta,
       )}
 
@@ -557,7 +547,7 @@ function CoverReportPage({ partner, date }: { partner: string; date: string }) {
 
           <div className="mt-9 grid max-w-2xl grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-3">
             {[
-              ["Certificação", "Simulação salva por PV", "#capitulo-certificacao"],
+              ["Certificação", "Simulação salva da operação", "#capitulo-certificacao"],
               ["Oportunidades", "Invasão, Móvel, FTTH, TI e Avançada", "#capitulo-oportunidades"],
               ["QSC", "Qualidade e execução", "#capitulo-qsc"],
               ["Quartil", "Faixas e cinco indicadores comerciais", "#capitulo-quartil"],

@@ -16,7 +16,7 @@ O Diretor e o GN devem identificar rapidamente o resultado, o desvio, o parceiro
 recorte e a oportunidade que exige ação. O administrador deve reconhecer solicitações
 pendentes e executar ações de acesso com clareza.
 
-Preservar navegação superior, Inter, Lucide, identidade roxa, filtro por parceiro,
+Preservar navegação superior, Inter, Lucide, identidade roxa, filtro por parceiro somente no Quartil,
 simuladores, exportações e detalhamento expansível. Manter rankings das Torres e do
 Quartil. Gráficos de oportunidades comunicam distribuição de potencial; não introduzir
 uma nova avaliação competitiva entre parceiros.
@@ -160,7 +160,7 @@ Conversão e Qualificados compartilham o padrão de tabela. O detalhe por parcei
 ser recolhido, com totais e informação completa acessíveis.
 
 Preservar fórmulas, arredondamentos e persistência existente por usuário/parceiro.
-Autosave informa salvando, salvo ou falha. Certificação identifica PV e ciclo junto da tabela;
+Autosave informa salvando, salvo ou falha. Certificação identifica o escopo da operação e o ciclo junto da tabela;
 resultado fechado usa texto, prévia usa campos. Pts e Faixa calculados não aparentam ser editáveis.
 
 ## Estados e interação

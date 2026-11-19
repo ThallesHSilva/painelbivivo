@@ -232,6 +232,9 @@ function Header({
   title: string;
 }) {
   const { theme, toggle } = useTheme();
+  const showPartnerFilter = useRouterState({
+    select: (state) => state.location.pathname === "/quartil",
+  });
   const [signingOut, setSigningOut] = useState(false);
 
   const signOut = async () => {
@@ -260,7 +263,7 @@ function Header({
             <NavItems role={role} />
           </div>
           <p className="flex-1 truncate text-sm font-semibold text-foreground xl:hidden">{title}</p>
-          {role !== null && role !== "admin" && (
+          {showPartnerFilter && role !== null && role !== "admin" && (
             <div className="hidden 2xl:block">
               <PartnerFilter />
             </div>
@@ -312,7 +315,7 @@ function Header({
             <span className="hidden 2xl:inline">Sair</span>
           </Button>
         </div>
-        {role !== null && role !== "admin" && (
+        {showPartnerFilter && role !== null && role !== "admin" && (
           <div className="pb-2 2xl:hidden">
             <PartnerFilter />
           </div>

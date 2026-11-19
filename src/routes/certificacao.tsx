@@ -1,8 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CertificationPanel } from "@/components/CertificationPanel";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
-import { usePartnerFilter } from "@/contexts/AppContexts";
-import { usePartners } from "@/hooks/useData";
 
 export const Route = createFileRoute("/certificacao")({
   head: () => ({ meta: [{ title: "Certificação — Mapa Parque" }] }),
@@ -10,21 +8,6 @@ export const Route = createFileRoute("/certificacao")({
 });
 
 function CertificationPage() {
-  const { selected } = usePartnerFilter();
-  const { data: partners = [] } = usePartners();
-  const candidatePartnerId = selected.length === 1 ? selected[0] : null;
-  const activePartner = partners.find((partner) => partner.id === candidatePartnerId) ?? null;
-
-  /**
-   * Cabeçalho funcional: nome da página e o recorte realmente em uso. A Certificação
-   * é individual por PV, então o recorte informa o parceiro do ciclo, não uma lista.
-   */
-  const scopeLabel = activePartner
-    ? activePartner.name
-    : selected.length > 1
-      ? `${selected.length} parceiros selecionados`
-      : "Nenhum parceiro selecionado";
-
   return (
     <DashboardLayout title="Certificação">
       <header className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
@@ -34,10 +17,8 @@ function CertificationPage() {
           </h1>
           <dl className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm text-muted-foreground">
             <div className="flex min-w-0 items-baseline gap-1.5">
-              <dt className="font-medium text-foreground">PV:</dt>
-              <dd className="min-w-0 truncate" title={activePartner?.name}>
-                {scopeLabel}
-              </dd>
+              <dt className="font-medium text-foreground">Escopo:</dt>
+              <dd>Operação</dd>
             </div>
             <div className="flex items-baseline gap-1.5">
               <dt className="font-medium text-foreground">Ciclos:</dt>

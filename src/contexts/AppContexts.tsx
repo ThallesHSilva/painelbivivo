@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import type { AuthRole } from "@/lib/auth.server";
+import { useRouterState } from "@tanstack/react-router";
 
 /* ---------------- Theme ---------------- */
 type Theme = "light" | "dark";
@@ -66,14 +67,17 @@ interface PartnerFilterCtx {
   isAll: boolean;
 }
 const PartnerFilterContext = createContext<PartnerFilterCtx | null>(null);
+const ALL_PARTNERS: string[] = [];
 
 export function PartnerFilterProvider({ children }: { children: ReactNode }) {
+  const isQuartil = useRouterState({ select: (state) => state.location.pathname === "/quartil" });
   const [selected, setSelectedState] = useState<string[]>([]);
   const [role, setRole] = useState<PartnerFilterCtx["role"]>(null);
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("mp:partners");
+      const raw =
+        localStorage.getItem("mp:quartil-partners") ?? localStorage.getItem("mp:partners");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) setSelectedState(parsed.filter((x) => typeof x === "string"));
@@ -93,7 +97,7 @@ export function PartnerFilterProvider({ children }: { children: ReactNode }) {
   const setSelected = useCallback((ids: string[]) => {
     setSelectedState(ids);
     try {
-      localStorage.setItem("mp:partners", JSON.stringify(ids));
+      localStorage.setItem("mp:quartil-partners", JSON.stringify(ids));
     } catch {
       /* ignore */
     }
@@ -110,14 +114,14 @@ export function PartnerFilterProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      selected,
+      selected: isQuartil ? selected : ALL_PARTNERS,
       role,
       setSelected,
       toggle,
       clear,
-      isAll: selected.length === 0,
+      isAll: !isQuartil || selected.length === 0,
     }),
-    [selected, role, setSelected, toggle, clear],
+    [selected, role, setSelected, toggle, clear, isQuartil],
   );
   return <PartnerFilterContext.Provider value={value}>{children}</PartnerFilterContext.Provider>;
 }

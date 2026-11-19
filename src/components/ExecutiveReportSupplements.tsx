@@ -298,26 +298,24 @@ export function opportunitiesReportPages(
 export function certificationReportPages(
   payload: unknown,
   updatedAt: string | undefined,
-  state: "individual" | "selection" | "error",
+  state: "operation" | "error",
   meta: Meta,
 ) {
   const parsed = parseCertificationPreview(payload);
-  if (state !== "individual" || !parsed)
+  if (state !== "operation" || !parsed)
     return [
       <ReportPage
         key="certification-empty"
         {...meta}
         title="Certificação"
-        eyebrow="2º ciclo · Simulação salva por PV"
+        eyebrow="2º ciclo · Simulação salva da operação"
       >
         <ReportMessage>
-          {state === "selection"
-            ? "A Certificação é individual por PV. Selecione um único parceiro para incluir a sua simulação salva; pontuações e pedras não são consolidadas entre parceiros."
-            : state === "error"
-              ? "Não foi possível carregar a simulação salva deste PV."
-              : payload == null
-                ? "Este PV ainda não possui simulação salva. Nenhum valor de exemplo do ciclo fechado foi incluído."
-                : "A simulação salva tem formato inválido e não pode ser incluída com segurança."}
+          {state === "error"
+            ? "Não foi possível carregar a simulação salva da operação."
+            : payload == null
+              ? "A operação ainda não possui simulação salva. Nenhum valor de exemplo do ciclo fechado foi incluído."
+              : "A simulação salva tem formato inválido e não pode ser incluída com segurança."}
         </ReportMessage>
       </ReportPage>,
     ];
@@ -382,4 +380,3 @@ export function certificationReportPages(
     </ReportPage>,
   ];
 }
-
