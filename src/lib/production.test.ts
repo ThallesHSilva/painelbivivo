@@ -5,10 +5,39 @@ import {
   orderCount,
   parseProductionCsv,
   productionNumber,
+  productionCategory,
+  isMobileActivation,
+  isMigration,
+  isFtth,
+  isRenewal,
   revenue,
   sumProduction,
   type ProductionRow,
 } from "./production.ts";
+
+test("commercial groups use exact approved names, excluding similar groups", () => {
+  assert.equal(productionCategory({ GRUPO: "Móvel Altas Totais" }), "Móvel");
+  assert.equal(productionCategory({ GRUPO: "Móvel - Migração" }), "Migração");
+  assert.equal(
+    productionCategory({ GRUPO: "Fixa Básica Ativação Total - Voz | Dados | SVA" }),
+    "Fixa Básica",
+  );
+  for (const GRUPO of [
+    "Móvel Altas - Modem",
+    "Alta Dados",
+    "Móvel - Trocas",
+    "Vivo Travel",
+    "Móvel - Migração PP",
+    "Fixa Básica PF Ativação Total - Voz | Dados | SVA",
+  ]) {
+    const row = { GRUPO };
+    assert.equal(isMobileActivation(row), false);
+    assert.equal(isMigration(row), false);
+    assert.equal(isFtth(row), false);
+    assert.equal(productionCategory(row), "Outros");
+    assert.equal(isRenewal(row), false);
+  }
+});
 
 test("CSV preserves quoted text, multiline fields, empty cells and escaped quotes", () => {
   assert.deepEqual(

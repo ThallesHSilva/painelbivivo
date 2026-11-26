@@ -60,6 +60,9 @@ export const integer = (value: number) =>
   value.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 
 export function productionCategory(row: ProductionRow) {
+  if (isMobileActivation(row)) return "Móvel";
+  if (isMigration(row)) return "Migração";
+  if (isFtth(row)) return "Fixa Básica";
   const group = normalizeProduction(row.GRUPO);
   if (/aparelho|equipamento/.test(group)) return "Aparelhos";
   if (/office/.test(group)) return "Office";
@@ -68,16 +71,15 @@ export function productionCategory(row: ProductionRow) {
   if (/voz negocio/.test(group)) return "VVN";
   if (/m2m/.test(group)) return "M2M";
   if (/avancada/.test(group)) return "Avançada";
-  if (/fixa/.test(group)) return "Fixa";
-  if (/movel|alta dados|travel/.test(group)) return "Móvel";
+  if (/fixa.*renovacao/.test(group)) return "Fixa";
   return "Outros";
 }
 export const isRenewal = (row: ProductionRow) =>
-  /renovacao|migracao/.test(normalizeProduction(row.GRUPO));
+  /renovacao/.test(normalizeProduction(row.GRUPO)) || isMigration(row);
+export const isMigration = (row: ProductionRow) => row.GRUPO === "Móvel - Migração";
 export const isFtth = (row: ProductionRow) =>
-  /fixa basica.*ativacao/.test(normalizeProduction(row.GRUPO));
-export const isMobileActivation = (row: ProductionRow) =>
-  /movel altas|alta dados/.test(normalizeProduction(row.GRUPO));
+  row.GRUPO === "Fixa Básica Ativação Total - Voz | Dados | SVA";
+export const isMobileActivation = (row: ProductionRow) => row.GRUPO === "Móvel Altas Totais";
 export const orderCount = (rows: ProductionRow[]) =>
   new Set(rows.map((row) => row["NUMERO ATIVIDADE"]).filter(Boolean)).size;
 export const sumProduction = (rows: ProductionRow[], measure = revenue) =>

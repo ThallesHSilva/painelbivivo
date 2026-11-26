@@ -24,6 +24,7 @@ import {
   integer,
   isFtth,
   isMobileActivation,
+  isMigration,
   isRenewal,
   money,
   normalizeProduction,
@@ -42,7 +43,7 @@ export const Route = createFileRoute("/producao")({
 });
 const CATEGORIES = [
   "Móvel",
-  "Fixa",
+  "Fixa Básica",
   "Avançada",
   "Office",
   "TI",
@@ -247,7 +248,7 @@ function ProductionPage() {
       tops: [
         { label: "Aparelhos", result: top(devices), format: money },
         {
-          label: "FTTH · ativações",
+          label: "Fixa Básica",
           result: top(selectedRows.filter(isFtth), quantity),
           format: integer,
         },
@@ -256,7 +257,11 @@ function ProductionPage() {
           result: top(selectedRows.filter(isMobileActivation), quantity),
           format: integer,
         },
-        { label: "Renovações", result: top(renewals, quantity), format: integer },
+        {
+          label: "Migração",
+          result: top(selectedRows.filter(isMigration), quantity),
+          format: integer,
+        },
         { label: "Receita · novas vendas", result: top(sales), format: money },
       ],
     };
@@ -541,15 +546,12 @@ function ProductionPage() {
                                 quantity,
                               ),
                             ],
-                            [
-                              "FTTH · ativações",
-                              sumProduction(selectedRows.filter(isFtth), quantity),
-                            ],
+                            ["Fixa Básica", sumProduction(selectedRows.filter(isFtth), quantity)],
                             [
                               "Altas móvel",
                               sumProduction(selectedRows.filter(isMobileActivation), quantity),
                             ],
-                            ["Renovações", sumProduction(summary.renewals, quantity)],
+                            ["Migração", sumProduction(selectedRows.filter(isMigration), quantity)],
                           ]}
                         />
                         <MetricPanel
@@ -567,7 +569,7 @@ function ProductionPage() {
                         <MetricPanel
                           title="Renovações"
                           subtitle="Renovações e migrações da base"
-                          items={["Avançada", "Fixa", "Móvel"].map((category) => [
+                          items={["Avançada", "Fixa", "Migração"].map((category) => [
                             category,
                             summary.byCategory(summary.renewals, category),
                           ])}
@@ -577,13 +579,13 @@ function ProductionPage() {
                           title="B2C"
                           subtitle="Pessoa física · incluído nos totais gerais"
                           items={[
-                            ["Fixa", summary.byCategory(summary.b2c, "Fixa")],
+                            ["Fixa Básica", summary.byCategory(summary.b2c, "Fixa Básica")],
                             ["Móvel", summary.byCategory(summary.b2c, "Móvel")],
                             [
                               "Demais produtos",
                               sumProduction(
                                 summary.b2c.filter(
-                                  (r) => !["Fixa", "Móvel"].includes(productionCategory(r)),
+                                  (r) => !["Fixa Básica", "Móvel"].includes(productionCategory(r)),
                                 ),
                               ),
                             ],
@@ -600,11 +602,13 @@ function ProductionPage() {
                     <p className="mt-3 leading-6">
                       Receita = valor unitário × quantidade. Pedidos são contados por NUMERO
                       ATIVIDADE, sem duplicar as linhas de produtos. Renovações agrupam os grupos
-                      que contêm “Renovação” ou “Migração”. FTTH agrupa “Fixa Básica” com
-                      “Ativação”; altas móvel agrupam “Móvel Altas” e “Alta Dados”. B2C considera PF
-                      OU PJ = PF e já faz parte dos demais totais. Classificações comerciais devem
-                      ser validadas antes do uso gerencial. Campos de carteira M15/M16/M17 e unidade
-                      não estão disponíveis nesta base.
+                      que contêm “Renovação”, mais a migração exata. Móvel considera somente GRUPO =
+                      “Móvel Altas Totais”; Migração considera somente “Móvel - Migração”; Fixa
+                      Básica considera somente “Fixa Básica Ativação Total - Voz | Dados | SVA”. Os
+                      demais grupos móveis e de ativação fixa ficam em Outros. B2C considera PF OU
+                      PJ = PF e já faz parte dos demais totais. Classificações comerciais devem ser
+                      validadas antes do uso gerencial. Campos de carteira M15/M16/M17 e unidade não
+                      estão disponíveis nesta base.
                     </p>
                   </details>
                 </div>
