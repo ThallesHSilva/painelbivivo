@@ -14,6 +14,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as RelatorioExecutivoRouteImport } from './routes/relatorio-executivo'
 import { Route as QuartilRouteImport } from './routes/quartil'
 import { Route as QscRouteImport } from './routes/qsc'
+import { Route as ProducaoRouteImport } from './routes/producao'
 import { Route as MovelRouteImport } from './routes/movel'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LicencasRouteImport } from './routes/licencas'
@@ -25,6 +26,7 @@ import { Route as AlimentacaoRouteImport } from './routes/alimentacao'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiQuartilRouteImport } from './routes/api.quartil'
 import { Route as ApiQscRouteImport } from './routes/api.qsc'
+import { Route as ApiProducaoRouteImport } from './routes/api.producao'
 import { Route as ApiInvasaoRouteImport } from './routes/api.invasao'
 import { Route as ApiQuartilOriginalRouteImport } from './routes/api.quartil.original'
 import { Route as ApiDataUploadRouteImport } from './routes/api.data.upload'
@@ -64,6 +66,11 @@ const QuartilRoute = QuartilRouteImport.update({
 const QscRoute = QscRouteImport.update({
   id: '/qsc',
   path: '/qsc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProducaoRoute = ProducaoRouteImport.update({
+  id: '/producao',
+  path: '/producao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MovelRoute = MovelRouteImport.update({
@@ -119,6 +126,11 @@ const ApiQuartilRoute = ApiQuartilRouteImport.update({
 const ApiQscRoute = ApiQscRouteImport.update({
   id: '/api/qsc',
   path: '/api/qsc',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiProducaoRoute = ApiProducaoRouteImport.update({
+  id: '/api/producao',
+  path: '/api/producao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiInvasaoRoute = ApiInvasaoRouteImport.update({
@@ -208,12 +220,14 @@ export interface FileRoutesByFullPath {
   '/licencas': typeof LicencasRoute
   '/login': typeof LoginRoute
   '/movel': typeof MovelRoute
+  '/producao': typeof ProducaoRoute
   '/qsc': typeof QscRoute
   '/quartil': typeof QuartilRoute
   '/relatorio-executivo': typeof RelatorioExecutivoRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
+  '/api/producao': typeof ApiProducaoRoute
   '/api/qsc': typeof ApiQscRoute
   '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -241,12 +255,14 @@ export interface FileRoutesByTo {
   '/licencas': typeof LicencasRoute
   '/login': typeof LoginRoute
   '/movel': typeof MovelRoute
+  '/producao': typeof ProducaoRoute
   '/qsc': typeof QscRoute
   '/quartil': typeof QuartilRoute
   '/relatorio-executivo': typeof RelatorioExecutivoRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
+  '/api/producao': typeof ApiProducaoRoute
   '/api/qsc': typeof ApiQscRoute
   '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -275,12 +291,14 @@ export interface FileRoutesById {
   '/licencas': typeof LicencasRoute
   '/login': typeof LoginRoute
   '/movel': typeof MovelRoute
+  '/producao': typeof ProducaoRoute
   '/qsc': typeof QscRoute
   '/quartil': typeof QuartilRoute
   '/relatorio-executivo': typeof RelatorioExecutivoRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/usuarios': typeof UsuariosRoute
   '/api/invasao': typeof ApiInvasaoRoute
+  '/api/producao': typeof ApiProducaoRoute
   '/api/qsc': typeof ApiQscRoute
   '/api/quartil': typeof ApiQuartilRouteWithChildren
   '/api/admin/users': typeof ApiAdminUsersRoute
@@ -310,12 +328,14 @@ export interface FileRouteTypes {
     | '/licencas'
     | '/login'
     | '/movel'
+    | '/producao'
     | '/qsc'
     | '/quartil'
     | '/relatorio-executivo'
     | '/sitemap.xml'
     | '/usuarios'
     | '/api/invasao'
+    | '/api/producao'
     | '/api/qsc'
     | '/api/quartil'
     | '/api/admin/users'
@@ -343,12 +363,14 @@ export interface FileRouteTypes {
     | '/licencas'
     | '/login'
     | '/movel'
+    | '/producao'
     | '/qsc'
     | '/quartil'
     | '/relatorio-executivo'
     | '/sitemap.xml'
     | '/usuarios'
     | '/api/invasao'
+    | '/api/producao'
     | '/api/qsc'
     | '/api/quartil'
     | '/api/admin/users'
@@ -376,12 +398,14 @@ export interface FileRouteTypes {
     | '/licencas'
     | '/login'
     | '/movel'
+    | '/producao'
     | '/qsc'
     | '/quartil'
     | '/relatorio-executivo'
     | '/sitemap.xml'
     | '/usuarios'
     | '/api/invasao'
+    | '/api/producao'
     | '/api/qsc'
     | '/api/quartil'
     | '/api/admin/users'
@@ -410,12 +434,14 @@ export interface RootRouteChildren {
   LicencasRoute: typeof LicencasRoute
   LoginRoute: typeof LoginRoute
   MovelRoute: typeof MovelRoute
+  ProducaoRoute: typeof ProducaoRoute
   QscRoute: typeof QscRoute
   QuartilRoute: typeof QuartilRoute
   RelatorioExecutivoRoute: typeof RelatorioExecutivoRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   UsuariosRoute: typeof UsuariosRoute
   ApiInvasaoRoute: typeof ApiInvasaoRoute
+  ApiProducaoRoute: typeof ApiProducaoRoute
   ApiQscRoute: typeof ApiQscRoute
   ApiQuartilRoute: typeof ApiQuartilRouteWithChildren
   ApiAdminUsersRoute: typeof ApiAdminUsersRoute
@@ -468,6 +494,13 @@ declare module '@tanstack/react-router' {
       path: '/qsc'
       fullPath: '/qsc'
       preLoaderRoute: typeof QscRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/producao': {
+      id: '/producao'
+      path: '/producao'
+      fullPath: '/producao'
+      preLoaderRoute: typeof ProducaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/movel': {
@@ -545,6 +578,13 @@ declare module '@tanstack/react-router' {
       path: '/api/qsc'
       fullPath: '/api/qsc'
       preLoaderRoute: typeof ApiQscRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/producao': {
+      id: '/api/producao'
+      path: '/api/producao'
+      fullPath: '/api/producao'
+      preLoaderRoute: typeof ApiProducaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/invasao': {
@@ -677,12 +717,14 @@ const rootRouteChildren: RootRouteChildren = {
   LicencasRoute: LicencasRoute,
   LoginRoute: LoginRoute,
   MovelRoute: MovelRoute,
+  ProducaoRoute: ProducaoRoute,
   QscRoute: QscRoute,
   QuartilRoute: QuartilRoute,
   RelatorioExecutivoRoute: RelatorioExecutivoRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   UsuariosRoute: UsuariosRoute,
   ApiInvasaoRoute: ApiInvasaoRoute,
+  ApiProducaoRoute: ApiProducaoRoute,
   ApiQscRoute: ApiQscRoute,
   ApiQuartilRoute: ApiQuartilRouteWithChildren,
   ApiAdminUsersRoute: ApiAdminUsersRoute,

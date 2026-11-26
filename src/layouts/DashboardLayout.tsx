@@ -28,6 +28,7 @@ import type { AuthRole } from "@/lib/auth.server";
 import { PartnerFilter } from "@/components/PartnerFilter";
 
 const PRIMARY_NAV = [
+  { to: "/producao", label: "Produção", icon: ChartNoAxesCombined },
   { to: "/qsc", label: "QSC", icon: ClipboardCheck },
   { to: "/certificacao", label: "Certificação", icon: Award },
 ] as const;
@@ -103,7 +104,7 @@ function NavItems({
   if (mobile) {
     return (
       <nav className="grid gap-1.5 p-3" aria-label="Navegação principal">
-        {PRIMARY_NAV.slice(0, 1).map((item) => navLink(item))}
+        {PRIMARY_NAV.slice(0, 2).map((item) => navLink(item))}
         <div className="my-1 rounded-md border border-border p-2">
           <div className="flex items-center gap-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-primary">
             <BriefcaseBusiness className="size-4" />
@@ -111,7 +112,7 @@ function NavItems({
           </div>
           <div className="grid gap-1">{OPPORTUNITY_NAV.map((item) => navLink(item, true))}</div>
         </div>
-        {PRIMARY_NAV.slice(1).map((item) => navLink(item))}
+        {PRIMARY_NAV.slice(2).map((item) => navLink(item))}
         {SECONDARY_NAV.map((item) => navLink(item))}
         {navLink(DATA_NAV)}
       </nav>
@@ -120,9 +121,9 @@ function NavItems({
 
   return (
     <nav className="flex items-center gap-0.5" aria-label="Navegação principal">
-      {PRIMARY_NAV.slice(0, 1).map((item) => navLink(item))}
+      {PRIMARY_NAV.slice(0, 2).map((item) => navLink(item))}
       <OpportunitiesMenu active={opportunitiesActive} renderLink={navLink} />
-      {PRIMARY_NAV.slice(1).map((item) => navLink(item))}
+      {PRIMARY_NAV.slice(2).map((item) => navLink(item))}
       {SECONDARY_NAV.map((item) => navLink(item))}
       {navLink(DATA_NAV)}
     </nav>
